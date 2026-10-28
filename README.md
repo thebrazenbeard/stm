@@ -1,8 +1,8 @@
 # STM — Short-Term Memory
 
-STM is a small, dependency-free Python library for **bounded, session-scoped working context** in AI agents and local language models. It stores attributed observations and messages, selects relevant evidence, and constructs a bounded context block. It is not a long-term autobiographical memory, a neural-learning mechanism, a model-runtime KV cache, or an identity authority.
+STM is a small, dependency-free Python library for **bounded, session-scoped working context** in AI agents and local language models. It stores attributed observations and messages, selects relevant evidence, and constructs a bounded context block. The opt-in v0.2 conversation archive provides separately authorized retrieval of original conversations across sessions. STM is not a long-term autobiographical memory, a neural-learning mechanism, a model-runtime KV cache, or an identity authority.
 
-**Status:** v0.1 source candidate for review. Tests of source code do not establish installation in an agent, model-runtime acceleration, or production readiness.
+**Status:** v0.2 source candidate under development, based on the tested v0.1 branch. Tests of source code do not establish installation in an agent, model-runtime acceleration, or production readiness.
 
 ## Install
 
@@ -56,6 +56,14 @@ The default `Utf8ByteCounter` measures **UTF-8 bytes**, not actual model tokens.
 
 See [architecture](docs/architecture.md), [source research and license boundaries](docs/research.md), [limitations](docs/limitations.md), and [examples](examples/basic.py).
 
+## Opt-in conversation archive (v0.2 candidate)
+
+`ConversationArchive` stores exact, attributed turns from multiple conversations of one authorized tenant/owner/agent in a local SQLite database and retrieves historical **evidence**, never current authority. The caller's trusted host must authenticate the principal and pass a policy callback; matching owner ID strings alone never constitute authorization. Archive writes, reads, corrections and deletions require scoped access, including privacy-label grants. No archive is created by ordinary `STM()` usage.
+
+The archive and the existing `HistoricalEvidenceBridge` are separate from active-session `STM.retrieve()` calls. History is not automatically admitted to current memory, interpreted as identity, or promoted to DeepMemoryStorage. SQLite data is plaintext unless the host supplies disk/database encryption; FTS, WAL, checkpoint and backup deletion require a retention policy.
+
+See [conversation archive usage and boundaries](docs/conversation_archive.md), [v0.2 archive contract](docs/archive_v02_contract.md), [source qualification and remaining gaps](docs/v02_qualification.md), and [local example](examples/conversation_archive.py).
+
 ## Checkpoint and restore
 
 ```python
@@ -88,7 +96,9 @@ Reference implementations were researched for mechanisms and tradeoffs. STM's co
 ```bash
 python -m unittest discover -s tests -v
 python benchmarks/bench_stm.py
+python benchmarks/bench_archive.py --iterations 30
 python examples/basic.py
+python examples/conversation_archive.py
 ```
 
 These commands verify the source candidate locally. No external service is installed or modified by them.
