@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.zip
+*.zip.aesgcm
+*.sqlite3
+*.sqlite3-*
+*.db
+*.key
+key.bin
