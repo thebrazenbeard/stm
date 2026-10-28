@@ -32,6 +32,11 @@ from .android_local_auth import (
     AndroidAppIdentity, AndroidAppRegistration, AndroidAppPeerGateway,
     verify_android_binding,
 )
+from .retention_window_3045 import (
+    REVIEW_AFTER, LOCAL_EXPIRE_AFTER, REVIEW_PERIOD, MAX_CLOCK_SKEW,
+    ThirtyFortyFiveReviewPolicy, ThirtyFortyFiveRetentionGate,
+    ThirtyFortyFiveWindow,
+)
 
 __all__ = [
     "STM", "MemorySession", "AdmissionRejected", "AccessDenied",
@@ -52,4 +57,7 @@ __all__ = [
     "DeepMemoryHandoff", "WindowsPeerMemoryGateway",
     "authenticated_windows_sid", "AndroidAppIdentity", "AndroidAppRegistration",
     "AndroidAppPeerGateway", "verify_android_binding",
+    "REVIEW_AFTER", "LOCAL_EXPIRE_AFTER", "REVIEW_PERIOD",
+    "MAX_CLOCK_SKEW", "ThirtyFortyFiveReviewPolicy",
+    "ThirtyFortyFiveRetentionGate", "ThirtyFortyFiveWindow",
 ]

@@ -98,17 +98,22 @@ class VeraConversationBridge:
         authorize: Callable[[VerifiedConversation, str, str], bool],
         archive: ConversationArchive | None = None,
         retention_gate: VerifiedRetentionGate | None = None,
+        history_gate: Callable[[VerifiedConversation, ConversationArchive,
+                                frozenset[str]], bool] | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ) -> None:
         if not isinstance(stm, STM) or not callable(resolve) or not callable(authorize):
             raise TypeError("STM and trusted broker callbacks are required")
         if not callable(clock):
             raise TypeError("clock must be callable")
+        if history_gate is not None and not callable(history_gate):
+            raise TypeError("history_gate must be a trusted callable")
         self._stm = stm
         self._archive = archive
         self._resolve = resolve
         self._authorize = authorize
         self._retention_gate = retention_gate
+        self._history_gate = history_gate
         self._clock = clock
 
     def _grant(self, request: object, *, action: str, privacy: str) -> VerifiedConversation:
@@ -244,6 +249,13 @@ class VeraConversationBridge:
             raise PermissionError("historical read widens privacy grant")
         for label in sorted(privacy_scopes):
             self._require_permission(grant, "archive_read", label)
+        if self._history_gate is not None:
+            try:
+                accepted = self._history_gate(grant, self._archive, privacy_scopes)
+            except Exception as error:
+                raise PermissionError("current archive read consent verification failed") from error
+            if accepted is not True:
+                raise PermissionError("current archive read consent denied")
         return ArchiveHistoryReader(
             self._archive, grant.principal, require_expiration=True,
         ).search(

@@ -2,7 +2,7 @@
 
 STM is a small, dependency-free Python library for **bounded, session-scoped working context** in AI agents and local language models. It stores attributed observations and messages, selects relevant evidence, and constructs a bounded context block. The opt-in conversation archive provides separately authorized retrieval of original conversations across sessions. STM is not a long-term autobiographical memory, a neural-learning mechanism, a model-runtime KV cache, or an identity authority.
 
-**Status:** v0.5 Windows/Android authenticated-local-process and 30-day historical-review **source candidate** based on v0.4. It is not connected to Vera's live interface: current VeraOS localhost HTTP endpoints do not authenticate callers. Source tests do not establish production installation, real signed-in identity mapping, or complete data erasure.
+**Status:** v0.6 selected 30/45-day local-history policy **source candidate**, based on v0.5 Windows/Android authenticated-local-process and governed historical review. It is not connected to Vera's live interface: current VeraOS localhost HTTP endpoints do not authenticate callers. Source tests do not establish production installation, real signed-in identity mapping, or complete data erasure.
 
 ## Install
 
@@ -96,6 +96,12 @@ Patrick proposed **30 days before conversational history becomes eligible for De
 
 See [Windows/Android platform and proposed 30-day policy](docs/windows_android_deepmemory_handoff_v05.md). Actual host endpoints, target retention/deletion guarantees, user consent and activation all require separate verification. The in-memory review queue has a capacity ceiling but no durable tombstone or cross-restart retry ledger; it is unsuitable as a production transfer scheduler.
 
+## Selected 30/45-day local archive policy (v0.6 candidate)
+
+Patrick selected **review eligibility on day 30 and hard local source expiry on day 45**. A 15-day window is available for separately consented private historical export, but **no export is automatic and a failed/pending export never extends local retention**. Source records become unreadable at expiration; a trusted running host must supervise physical expiry sweeps and all backup/original-journal cleanup. Without an authorized destination, local history still expires at day 45. A later correction inherits the original expiry and may not mature to its own 30-day review threshold before day 45.
+
+See [selected policy and effect limitations](docs/retention_30_45_v06.md). This applies to newly admitted opt-in archive turns through the configured host policy; it does not silently rewrite old history, grant long-term-memory permission, or activate a Windows/Android Vera service.
+
 ## Checkpoint and restore
 
 ```python
@@ -134,6 +140,7 @@ python examples/conversation_archive.py
 python examples/vera_bridge_mock.py
 python examples/authenticated_host_demo.py
 python examples/handoff_review_mock.py
+python examples/retention_window_3045.py
 ```
 
 These commands verify the source candidate locally. No external service is installed or modified by them.
