@@ -6,6 +6,7 @@ running localhost interface or a real authentication token verifier.
 
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
+from contextlib import closing
 import os
 from pathlib import Path
 import sqlite3
@@ -152,7 +153,7 @@ class UnblockAdversarialTests(unittest.TestCase):
                 except PermissionError:
                     # Full-database backup correctly denied to a scope-only actor.
                     return
-                with sqlite3.connect(str(vault_directory / receipt.name)) as copy:
+                with closing(sqlite3.connect(str(vault_directory / receipt.name))) as copy, copy:
                     archived_owners = {r[0] for r in copy.execute(
                         "SELECT owner_id FROM turns"
                     )}

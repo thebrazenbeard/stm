@@ -8,6 +8,7 @@ deployment into an actual Vera process or forensic erasure of backups.
 
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -132,8 +133,8 @@ class VeraPrivacyAdversarialTests(unittest.TestCase):
         """A surviving copied backup proves physical retention needs host policy."""
         old = self.append("backupghostphrase must not remain indefinitely")
         backup = self.directory / "pre-deletion-backup.sqlite3"
-        with sqlite3.connect(str(self.directory / "history.sqlite3")) as source:
-            with sqlite3.connect(str(backup)) as destination:
+        with closing(sqlite3.connect(str(self.directory / "history.sqlite3"))) as source, source:
+            with closing(sqlite3.connect(str(backup))) as destination, destination:
                 source.backup(destination)  # Separate test-created snapshot.
         backup.chmod(0o600)
         self.assertTrue(self.archive.delete(self.principal, self.scope, old.turn_id))

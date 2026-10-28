@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 import json
 import os
@@ -111,14 +112,14 @@ class ConversationArchiveTests(unittest.TestCase):
         self.assertTrue(self.store.delete("pat", SCOPE, first.turn_id))
         self.assertEqual(self.search("fourteen"), ())
         self.assertFalse(self.store.delete("pat", SCOPE, first.turn_id))
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute("INSERT INTO turns_fts(turns_fts, rank) VALUES ('integrity-check', 1)")
 
     def test_delete_hard_removes_payload_from_sql_and_fts(self):
         first = self.append("A rare marmalade mineral")
         self.assertTrue(self.store.delete("pat", SCOPE, first.turn_id))
         self.assertEqual(self.search("marmalade"), ())
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             self.assertEqual(db.execute("SELECT count(*) FROM turns").fetchone()[0], 0)
             db.execute("INSERT INTO turns_fts(turns_fts, rank) VALUES ('integrity-check', 1)")
             self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0], "ok")
@@ -264,7 +265,7 @@ a.close()
         self.store = ConversationArchive(self.path, authorize=authorizer)
         self.assertEqual(self.search("violet"), ())
         self.assertEqual(len(self.search("indigo")), 1)
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute("INSERT INTO turns_fts(turns_fts, rank) VALUES ('integrity-check', 1)")
             self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0], "ok")
 
@@ -309,7 +310,7 @@ a.close()
         self.store.close()
         self.store = ConversationArchive(self.path, authorize=authorizer)
         self.assertEqual(len(self.search("mark17")), 1)
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute("INSERT INTO turns_fts(turns_fts, rank) VALUES ('integrity-check', 1)")
             self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0], "ok")
 
@@ -331,14 +332,14 @@ a.close()
                 outcomes = [result_a.result(timeout=5), result_b.result(timeout=5)]
         self.assertEqual(sorted(status for status, _ in outcomes), ["stale", "success"])
         self.assertEqual(len(self.search("delivery")), 1)
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             self.assertEqual(db.execute("SELECT count(*) FROM turns WHERE active=1")
                              .fetchone()[0], 1)
             db.execute("INSERT INTO turns_fts(turns_fts, rank) VALUES ('integrity-check', 1)")
 
     def test_unknown_schema_rejected(self):
         self.store.close()
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute("PRAGMA user_version=999")
         with self.assertRaises(RuntimeError):
             ConversationArchive(self.path, authorize=authorizer)

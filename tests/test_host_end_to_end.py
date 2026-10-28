@@ -8,6 +8,7 @@ No HTTP localhost identity or deployed Vera service is implied.
 
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -150,7 +151,7 @@ class HostEndToEndTests(unittest.TestCase):
         self.assertEqual(report.deleted, 1)
         self.assertTrue(report.complete)
         self.assertEqual(self.runner.run_once().deleted, 0)
-        with sqlite3.connect(self.path) as raw:
+        with closing(sqlite3.connect(self.path)) as raw, raw:
             self.assertEqual(raw.execute("SELECT count(*) FROM turns").fetchone()[0], 0)
             raw.execute("INSERT INTO turns_fts(turns_fts, rank) VALUES ('integrity-check', 1)")
 
@@ -350,7 +351,7 @@ class CryptographicBrokerEndToEndTests(unittest.TestCase):
         report = self.runner.run_once()
         self.assertEqual(report.deleted, 1)
         self.assertTrue(report.complete)
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             self.assertEqual(db.execute("SELECT count(*) FROM turns").fetchone()[0], 0)
             db.execute("INSERT INTO turns_fts(turns_fts, rank) VALUES ('integrity-check', 1)")
 
