@@ -157,9 +157,12 @@ class ConversationArchive:
         path: str,
         *,
         authorize: Callable[[object, str, ArchiveScope], bool],
+        require_fts_secure_delete: bool = False,
     ) -> None:
         if not callable(authorize):
             raise TypeError("a trusted archive authorization callback is required")
+        if not isinstance(require_fts_secure_delete, bool):
+            raise TypeError("require_fts_secure_delete must be a bool")
         if not isinstance(path, (str, os.PathLike)) or not os.fspath(path):
             raise ValueError("archive path must be non-empty")
         self._authorize_callback = authorize
@@ -179,21 +182,29 @@ class ConversationArchive:
             self._db.execute("PRAGMA temp_store=MEMORY")
             self._db.execute("PRAGMA journal_mode=WAL")
             self._init_schema()
-            # FTS5 index terms require their *own* secure-delete setting;
-            # SQLite's PRAGMA secure_delete alone is insufficient. The FTS5
-            # command is not supported by all Python-bundled SQLite versions.
-            # This reduces some local remnants but cannot erase prior WAL,
-            # backups, snapshots, or storage-device copies.
-            try:
-                with self._db:
-                    self._db.execute(
-                        "INSERT INTO turns_fts(turns_fts, rank) "
-                        "VALUES ('secure-delete', 1)"
-                    )
-            except sqlite3.OperationalError:
-                self.fts_secure_delete_enabled = False
-            else:
-                self.fts_secure_delete_enabled = True
+            # FTS5 secure-delete is NOT safe merely because a SQLite version
+            # accepts its configuration command. SQLite 3.45.1 accepts it but
+            # our external-content deletion/integrity regression corrupts its
+            # inverted index; 3.53.1 passed the same regression. Until more
+            # builds are qualified, enable only on the verified 3.53.1+ range.
+            # The strict flag prevents a host from unknowingly weakening its
+            # retention policy when running an older SQLite build.
+            if sqlite3.sqlite_version_info >= (3, 53, 1):
+                try:
+                    with self._db:
+                        self._db.execute(
+                            "INSERT INTO turns_fts(turns_fts, rank) "
+                            "VALUES ('secure-delete', 1)"
+                        )
+                except sqlite3.OperationalError:
+                    self.fts_secure_delete_enabled = False
+                else:
+                    self.fts_secure_delete_enabled = True
+            if require_fts_secure_delete and not self.fts_secure_delete_enabled:
+                raise RuntimeError(
+                    "FTS5 secure-delete is not qualified on this SQLite build; "
+                    "use a verified newer SQLite or refuse archival retention"
+                )
             self._check_private_files()
         except BaseException:
             self._db.close()
@@ -230,15 +241,23 @@ class ConversationArchive:
                 BEGIN
                     INSERT INTO turns_fts(rowid, content) VALUES(new.id, new.content);
                 END;
-                CREATE TRIGGER IF NOT EXISTS turns_ad AFTER DELETE ON turns
+                -- FTS5 external-content delete must see the old content row.
+                -- Remove the earlier AFTER triggers when reopening a v0.2
+                -- prototype database so the new trigger order is unambiguous.
+                DROP TRIGGER IF EXISTS turns_ad;
+                DROP TRIGGER IF EXISTS turns_au;
+                CREATE TRIGGER IF NOT EXISTS turns_bd BEFORE DELETE ON turns
+                BEGIN
+                    INSERT INTO turns_fts(turns_fts, rowid, content)
+                    VALUES('delete', old.id, old.content);
+                END;
+                CREATE TRIGGER IF NOT EXISTS turns_bu BEFORE UPDATE OF content ON turns
                 BEGIN
                     INSERT INTO turns_fts(turns_fts, rowid, content)
                     VALUES('delete', old.id, old.content);
                 END;
                 CREATE TRIGGER IF NOT EXISTS turns_au AFTER UPDATE OF content ON turns
                 BEGIN
-                    INSERT INTO turns_fts(turns_fts, rowid, content)
-                    VALUES('delete', old.id, old.content);
                     INSERT INTO turns_fts(rowid, content)
                     VALUES(new.id, new.content);
                 END;

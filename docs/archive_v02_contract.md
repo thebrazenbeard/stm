@@ -31,7 +31,8 @@ class ArchiveHit:
     score: float  # scoped lexical term-coverage signal, not confidence or truth
 
 class ConversationArchive:
-    def __init__(self, path: str, *, authorize: Callable[[object, str, ArchiveScope], bool]) -> None: ...
+    def __init__(self, path: str, *, authorize: Callable[[object, str, ArchiveScope], bool],
+                 require_fts_secure_delete: bool = False) -> None: ...
     def append_turn(self, principal: object, scope: ArchiveScope, *, conversation_id: str,
                     role: str, content: str, source: str = 'conversation',
                     privacy: str = 'private', event_time: datetime | None = None) -> ArchiveTurn: ...
@@ -48,6 +49,8 @@ Calls must check `authorize(principal, action, scope)` for actions `append`, `se
 Records carry role, source, privacy, event and recording time and stable turn IDs. Correction creates a new turn referring to the predecessor via `supersedes_id`, marks prior turn inactive for search, and never presents the predecessor as current. Delete removes the target's content from canonical search and FTS5 index and invalidates descendants as necessary; note that logical deletion cannot guarantee forensic erasure from preexisting backups/WAL. Never insert historical text automatically into active STM. User-provided content is always data, never instructions/permission.
 
 Use SQLite `sqlite3` WAL, foreign keys, FTS5 external-content triggers or equivalent atomic indexing, `PRAGMA user_version` schema checks, and parameterized owner predicates. Escape user search terms into a safe phrase/token query; never concatenate raw user query as FTS SQL grammar. For index integrity tests use external-content `integrity-check` **with `rank=1`**. Include recovery/reopen, concurrent writers, cross-scope, TTL/retention policy limitations in documentation; default plaintext must be disclosed.
+
+SQLite FTS5 secure-delete version handling is strict opt-in for real retention: the constructor's `require_fts_secure_delete=True` rejects unqualified builds. SQLite 3.45.1 accepted the FTS5 setting but failed the external-content deletion/integrity regression; SQLite 3.53.1 passed. Until older-version behavior is fixed and independently qualified, the non-strict prototype intentionally leaves FTS5 secure-delete disabled below 3.53.1 and reports `fts_secure_delete_enabled=False`. Do not interpret successful normal deletion on that path as physical erasure.
 
 ## Historical adapter (owned by `src/stm/archive_adapter.py`)
 

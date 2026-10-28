@@ -8,7 +8,7 @@ Base source: `thebrazenbeard/stm@670f9478df84226d40e975b02cb2c22631c6f850` (the 
 
 | Evidence | Command or procedure | Observed result |
 | --- | --- | --- |
-| Full v0.1 + v0.2 regressions | `PYTHONPATH=src python3 -B -m unittest discover -s tests -q` | Exit 0; **136 tests passed**, Python 3.12.14, SQLite 3.53.1 |
+| Full v0.1 + v0.2 regressions | `PYTHONPATH=src python3 -B -m unittest discover -s tests -q` | Exit 0; **137 tests passed** on Python 3.12.14 / SQLite 3.53.1, and on system Python 3.12.3 / SQLite 3.45.1 |
 | Public evidence-only path | `PYTHONPATH=src python3 -B examples/conversation_archive.py` | Exit 0; citation-preserving cross-conversation recall, correction, delete, reopen with synthetic text |
 | Synthetic evaluation | `PYTHONPATH=src python3 -B benchmarks/bench_archive.py --iterations 30` | Exit 0; 601 events, 600 active, four scopes, 10 queries (8 positive), k=8, 300 timed queries/method |
 | Safe source diff | `git diff --check` | Exit 0 |
@@ -30,6 +30,7 @@ The final targeted reviewer addendum found no remaining confirmed Critical/Impor
 
 - **Host authentication and consent:** The application integrating STM must provide genuinely authenticated principals and privacy authorization callbacks. The demonstration callback is not that implementation.
 - **Confidentiality and erasure:** Standard SQLite database/WAL are plaintext. POSIX permission checks reduce cross-OS-user exposure, not same-user access. FTS5 secure-delete is enabled when supported, but existing WAL, backups, snapshots, and external derived data are not forensically erased. Encryption, backup lifecycle, Windows ACL and attacker-writable ancestor directories need host review.
+- **SQLite cross-version finding:** The first GitHub Actions run failed two FTS5 integrity tests on older SQLite builds despite 136/136 tests passing on local SQLite 3.53.1. Reproduction on SQLite 3.45.1 isolated the issue to FTS5 secure-delete during deletion. v0.2 now gates that feature to 3.53.1+ and exposes a strict fail-closed constructor flag; the follow-up CI run is the qualification evidence, not the original local test alone.
 - **Recovery/security scale:** Multi-process sustained load, power-loss recovery, migration from older SQLite builds, secure restore provenance, massive archives, and side-channel resistance have not been qualified. Ranking scans every authorized FTS hit and CPU cost grows with matched corpus size.
 - **Retrieval quality:** No actual LongMemEval/LoCoMo or real Vera conversation/model evaluation. Lexical retrieval misses paraphrases; local semantic search remains optional and unbuilt.
 - **Tokenizer/runtime:** A model-independent exact-backend protocol is implemented and mock-tested; no actual Vera engine tokenizer, full rendered prompt, KV-cache reuse, Ollama/llama.cpp process, VRAM or latency measurement was verified.

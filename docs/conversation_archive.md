@@ -51,6 +51,8 @@ Each turn records a stable ID, conversation ID, role, exact source text, source 
 
 Deleting an indexed turn and obtaining no FTS matches demonstrates **logical non-retrievability** in that query path. It does **not** prove irreversible erasure. SQLite pages, WAL files, filesystem snapshots, backups, application logs, model prompts and separately derived embeddings may preserve prior contents. A personal-memory deployment needs a written retention and erasure policy, key/storage policy, secure backup workflow, and tests that traverse every derivative. `PRAGMA secure_delete` and FTS5's separate `secure-delete` setting have version-specific requirements and are not a substitute for deleting backups.
 
+**SQLite compatibility:** CI exposed that SQLite 3.45.1 can accept FTS5 `secure-delete` but produce a malformed inverted index after deletion; SQLite 3.53.1 passed the same regression. The prototype therefore enables FTS5 secure-delete only on qualified SQLite 3.53.1+ builds, reports the boolean `archive.fts_secure_delete_enabled`, and offers `require_fts_secure_delete=True` to fail closed on unqualified versions. The non-strict older-SQLite path is for synthetic evaluation and does not claim secure physical deletion of personal material.
+
 ## Privacy and operational boundaries
 
 - SQLite is **plaintext by default**. Use a private filesystem with explicitly verified protection, or a separately reviewed encrypted storage option such as SQLCipher. Do not place this database in an unprotected sync folder or telemetry stream.

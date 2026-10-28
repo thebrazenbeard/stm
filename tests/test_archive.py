@@ -125,10 +125,22 @@ class ConversationArchiveTests(unittest.TestCase):
 
     def test_fts_secure_delete_feature_probe_is_explicit(self):
         self.assertIsInstance(self.store.fts_secure_delete_enabled, bool)
-        # SQLite 3.42+ documents the extension setting, but the actual probe
-        # is authoritative for the packaged SQLite build in this runtime.
-        if sqlite3.sqlite_version_info >= (3, 42, 0):
+        # Older SQLite 3.45.1 accepts the setting but fails the external FTS
+        # deletion/integrity regression. Enable only in qualified 3.53.1+.
+        if sqlite3.sqlite_version_info >= (3, 53, 1):
             self.assertTrue(self.store.fts_secure_delete_enabled)
+        else:
+            self.assertFalse(self.store.fts_secure_delete_enabled)
+
+    def test_required_fts_secure_delete_fails_closed_on_unsupported_sqlite(self):
+        if sqlite3.sqlite_version_info < (3, 53, 1):
+            with self.assertRaisesRegex(RuntimeError, "not qualified"):
+                ConversationArchive(self.path, authorize=authorizer,
+                                    require_fts_secure_delete=True)
+        else:
+            with ConversationArchive(self.path, authorize=authorizer,
+                                     require_fts_secure_delete=True) as protected:
+                self.assertTrue(protected.fts_secure_delete_enabled)
 
     @unittest.skipUnless(os.name == "posix", "POSIX file modes only")
     def test_existing_world_readable_db_and_symlink_fail_closed(self):
