@@ -1,8 +1,8 @@
 # STM — Short-Term Memory
 
-STM is a small, dependency-free Python library for **bounded, session-scoped working context** in AI agents and local language models. It stores attributed observations and messages, selects relevant evidence, and constructs a bounded context block. The opt-in v0.2 conversation archive provides separately authorized retrieval of original conversations across sessions. STM is not a long-term autobiographical memory, a neural-learning mechanism, a model-runtime KV cache, or an identity authority.
+STM is a small, dependency-free Python library for **bounded, session-scoped working context** in AI agents and local language models. It stores attributed observations and messages, selects relevant evidence, and constructs a bounded context block. The opt-in conversation archive provides separately authorized retrieval of original conversations across sessions. STM is not a long-term autobiographical memory, a neural-learning mechanism, a model-runtime KV cache, or an identity authority.
 
-**Status:** v0.2 source candidate under development, based on the tested v0.1 branch. Tests of source code do not establish installation in an agent, model-runtime acceleration, or production readiness.
+**Status:** v0.3 authenticated-host integration **source candidate** based on v0.2. It is not connected to Vera's live interface: the current VeraOS localhost HTTP endpoints do not authenticate callers. Source tests do not establish runtime deployment, verified host authentication, or complete data erasure.
 
 ## Install
 
@@ -64,6 +64,14 @@ The archive and the existing `HistoricalEvidenceBridge` are separate from active
 
 See [conversation archive usage and boundaries](docs/conversation_archive.md), [v0.2 archive contract](docs/archive_v02_contract.md), [source qualification and remaining gaps](docs/v02_qualification.md), and [local example](examples/conversation_archive.py).
 
+## Authenticated Vera host and finite-retention integration (v0.3 candidate)
+
+The new `VeraConversationBridge` accepts only a **trusted broker-resolved, expiring** `VerifiedConversation` scope. It never treats a caller's `conversation_id`, localhost, browser `Origin`, or `Host` as authentication. Working records are TTL-bounded; archiving is **disabled unless** explicit consent, a finite policy limit, archive permissions and a host-provided retention-enforcement gate are all supplied. Historical recall requires current consent and retrieves only nonexpired, explicitly governed evidence. There is no automatic promotion into live memory.
+
+The SQLite schema now stores `expires_at`, migrates from v0.2, hides expired rows at query time, and exposes scope-authorized bounded `expire_due()` sweeps (with dry-run counts). `RetainedConversationArchive` wraps this with current consent checks and an explicit configurable maximum age (library ceiling: 90 days; **not Vera's adopted policy**). Host-side recurring scheduling, managed backups/logs, OS permissions, actual authentication and deletion across source journals are still required before any personal data is enabled.
+
+See [Vera integration and source findings](docs/vera_local_integration.md) and [privacy/retention qualification](docs/privacy_retention_v03.md). This library does **not** attach itself to VeraOS's unauthenticated `/api/conversation` or `/api/conversation/history` endpoints.
+
 ## Checkpoint and restore
 
 ```python
@@ -99,6 +107,7 @@ python benchmarks/bench_stm.py
 python benchmarks/bench_archive.py --iterations 30
 python examples/basic.py
 python examples/conversation_archive.py
+python examples/vera_bridge_mock.py
 ```
 
 These commands verify the source candidate locally. No external service is installed or modified by them.

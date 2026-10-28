@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stm-short-term-memory"
-version = "0.2.0"
-description = "Bounded working memory with an optional local conversation archive for AI agents"
+version = "0.3.0"
+description = "Bounded local agent memory, scoped conversation archive and opt-in authenticated-host integration"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{name = "STM contributors"}]
