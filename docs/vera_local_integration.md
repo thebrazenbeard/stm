@@ -1,6 +1,6 @@
 # Vera local conversation integration — authenticated-host contract
 
-**Status (2026-10-28):** v0.3 library source candidate. Not installed or activated
+**Status (2026-10-28):** v0.4 library source candidate. Not installed or activated
 in Vera. In particular, there is **no** proven authenticated VeraOS local
 conversation caller to which this should be wired today.
 
@@ -50,13 +50,22 @@ must supply all of the following:
    are provided.
 
 Operations: `remember` creates only TTL-bounded working context;
-`working_context` packs bounded context (currently requires all-label broker
-authority until scope-filtered packing exists); `archive_turn` is a separate,
+`working_context` packs bounded context after filtering to its explicitly
+authorized privacy label (without needing all-label broker authority); `archive_turn` is a separate,
 consented write with a persisted expiry deadline; `recall_history` returns
 source-attributed historical evidence only and requires current read consent;
 `delete_archived` deletes a scoped archive lineage with all-label authority.
 No operation admits prior conversations as a present autobiographical fact,
 system instruction, or model training signal.
+
+The v0.4 source adds `HmacConversationBroker` for issuer/audience/transport-
+bound short-lived credentials and `ScopedCleanupAuthority` for independently
+authenticated, expiry-only maintenance. A single-use credential requires a
+host-provided durable atomic replay ledger. `RetentionSweepRunner` must be
+invoked by the host on startup and on a supervised schedule; `complete` covers
+only registered scopes/privacy labels and separately flags policyless legacy
+rows. No true login verifier, credential key vault, process supervisor,
+approved policy or backup deletion mechanism has been installed in VeraOS.
 
 ## Integration checklist: blocking, not optional
 
@@ -71,6 +80,10 @@ system instruction, or model training signal.
   Vera source. The 90-day cap is a library limit, not the policy selection.
 - [ ] Operate a recurring authorized `expire_due()` / retention `sweep()` job,
   including after interruption/offline periods, and audit content-free counts.
+- [ ] Provision a separate expiry-only host cleanup identity and private key;
+  never reuse expired interactive credentials or give it arbitrary delete rights.
+- [ ] Audit and resolve legacy `expires_at=NULL` rows via an **explicit**
+  `delete_legacy` grant; partial scope coverage cannot qualify whole-store erasure.
 - [ ] Inventory original `pre_active` journals, task records, logs, caches,
   SQLite FTS/WAL, backups, filesystem snapshots, model transcript copies and
   any external semantic/DeepMemory derivative. Define deletion for each.
@@ -84,4 +97,7 @@ system instruction, or model training signal.
 
 `examples/vera_bridge_mock.py` is a local synthetic demonstration with a mock
 broker. It is not authentication, background retention, or Vera installation.
+`examples/authenticated_host_demo.py` exercises real HMAC verification with
+synthetic test identities. `stm.linux_peer_gateway` provides a separate
+Linux-only kernel-credential prototype, not browser authentication.
 

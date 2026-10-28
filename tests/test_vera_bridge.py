@@ -227,16 +227,21 @@ class VeraBridgeTests(unittest.TestCase):
             self.bridge.recall_history(self.a, "lunar spool",
                 privacy_scopes=frozenset({"private"}))
 
-    def test_working_context_requires_broad_broker_authority(self):
+    def test_working_context_enforces_private_only_least_privilege(self):
         self.bridge.remember(self.a, "magenta triangle is drawn")
-        with self.assertRaises(PermissionError):
-            self.bridge.working_context(self.a, "magenta", token_budget=200)
         self.broker.requests[self.a] = replace(
-            self.grant, privacy_scopes=frozenset({"private", "session", "shared"}),
+            self.grant, privacy_scopes=frozenset({"private", "shared"}),
         )
-        packed = self.bridge.working_context(self.a, "magenta", token_budget=200)
+        self.bridge.remember(self.a, "magenta shared-only observation", privacy="shared")
+        self.broker.requests[self.a] = self.grant
+        packed = self.bridge.working_context(self.a, "magenta", token_budget=400)
         self.assertIn("magenta triangle", packed.text)
-        self.assertLessEqual(packed.token_count, 200)
+        self.assertNotIn("shared-only", packed.text)
+        self.assertTrue(all(record.privacy == "private" for record in packed.selected))
+        with self.assertRaises(PermissionError):
+            self.bridge.working_context(self.a, "magenta", privacy="shared",
+                                        token_budget=400)
+        self.assertLessEqual(packed.token_count, 400)
 
 
 if __name__ == "__main__":

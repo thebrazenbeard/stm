@@ -543,13 +543,22 @@ class ConversationArchive:
             for label in privacy_scopes
         ):
             raise PermissionError("explicit expiry privacy labels required")
-        cutoff = _utc_iso(now or datetime.now(timezone.utc))
+        # Maintenance must not postpone required erasure when a host clock
+        # rolls backward. Keep the same monotone-to-wall floor as reads.
+        system_now = datetime.now(timezone.utc)
+        requested_now = now or system_now
+        if requested_now.tzinfo is None or requested_now.utcoffset() is None:
+            raise ValueError("expiry sweep time must be timezone-aware")
+        cutoff = _utc_iso(max(requested_now.astimezone(timezone.utc), system_now))
         labels = tuple(sorted(privacy_scopes))
         with self._lock:
             self._check_open()
-            self._permission(principal, scope, "delete")
+            # Maintenance expiry is deliberately a *narrower* authority than
+            # delete(turn_id). A scheduled cleanup service must not acquire
+            # unrestricted hard-deletion rights over unexpired conversations.
+            self._permission(principal, scope, "expire")
             for label in labels:
-                self._permission(principal, scope, "delete", label)
+                self._permission(principal, scope, "expire", label)
             placeholders = ",".join("?" for _ in labels)
             sql = f"""
                 SELECT id, privacy FROM turns
@@ -564,6 +573,100 @@ class ConversationArchive:
                 rows = self._db.execute(sql, (
                     scope.tenant_id, scope.owner_id, scope.agent_id,
                     cutoff, *labels, limit,
+                )).fetchall()
+                if not dry_run:
+                    with self._db:
+                        for row in rows:
+                            self._db.execute("DELETE FROM turns WHERE id=?", (row["id"],))
+            except BaseException:
+                if not dry_run and self._db.in_transaction:
+                    self._db.rollback()
+                raise
+            self._check_private_files()
+            return len(rows)
+
+    def has_legacy_unretained(
+        self,
+        principal: object,
+        scope: ArchiveScope,
+        *,
+        privacy_scopes: frozenset[str],
+    ) -> bool:
+        """Audit only whether policyless rows remain in a scoped archive.
+
+        A maintenance runner MUST NOT certify full managed retention while
+        legacy NULL-expiry records remain. The host grants a distinct
+        ``audit_legacy`` verb; this returns no content or record identifiers.
+        Neither consent revocation nor expiry service authority authorizes
+        automatically deleting these historical rows.
+        """
+        if not isinstance(privacy_scopes, frozenset) or not privacy_scopes or any(
+            not isinstance(label, str) or not label.strip()
+            for label in privacy_scopes
+        ):
+            raise PermissionError("explicit legacy audit privacy labels required")
+        labels = tuple(sorted(privacy_scopes))
+        with self._lock:
+            self._check_open()
+            self._permission(principal, scope, "audit_legacy")
+            for label in labels:
+                self._permission(principal, scope, "audit_legacy", label)
+            placeholders = ",".join("?" for _ in labels)
+            row = self._db.execute(f"""
+                SELECT 1 FROM turns
+                WHERE tenant_id=? AND owner_id=? AND agent_id=?
+                  AND expires_at IS NULL AND privacy IN ({placeholders})
+                LIMIT 1
+            """, (scope.tenant_id, scope.owner_id, scope.agent_id,
+                  *labels)).fetchone()
+            return row is not None
+
+    def purge_legacy_unretained(
+        self,
+        principal: object,
+        scope: ArchiveScope,
+        *,
+        privacy_scopes: frozenset[str],
+        limit: int = 100,
+        dry_run: bool = True,
+    ) -> int:
+        """Explicitly dispose of **policyless** pre-v0.3 rows in one scope.
+
+        Migration never invents consent or a TTL for rows with null expiry.
+        This separate opt-in operation requires an additional host
+        ``delete_legacy`` authority. It is intentionally a dry run by default,
+        and does not remove old copies in WAL, backups or source journals.
+        """
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+            raise ValueError("legacy purge batch must be between 1 and 1000")
+        if not isinstance(dry_run, bool):
+            raise TypeError("dry_run must be bool")
+        if not isinstance(privacy_scopes, frozenset) or not privacy_scopes or any(
+            not isinstance(label, str) or not label.strip()
+            for label in privacy_scopes
+        ):
+            raise PermissionError("explicit legacy purge privacy labels required")
+        labels = tuple(sorted(privacy_scopes))
+        with self._lock:
+            self._check_open()
+            self._permission(principal, scope, "delete")
+            self._permission(principal, scope, "delete_legacy")
+            for label in labels:
+                self._permission(principal, scope, "delete", label)
+                self._permission(principal, scope, "delete_legacy", label)
+            placeholders = ",".join("?" for _ in labels)
+            sql = f"""
+                SELECT id FROM turns
+                WHERE tenant_id=? AND owner_id=? AND agent_id=?
+                  AND expires_at IS NULL AND privacy IN ({placeholders})
+                ORDER BY id LIMIT ?
+            """
+            if not dry_run:
+                self._db.execute("BEGIN IMMEDIATE")
+            try:
+                rows = self._db.execute(sql, (
+                    scope.tenant_id, scope.owner_id, scope.agent_id,
+                    *labels, limit,
                 )).fetchall()
                 if not dry_run:
                     with self._db:

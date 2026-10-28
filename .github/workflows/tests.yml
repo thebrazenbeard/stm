@@ -19,6 +19,8 @@ jobs:
       - name: Install source candidate
         run: python -m pip install -e .
       - name: Run tests
+        env:
+          STM_REQUIRE_PEER_SOCKET_TESTS: "1"
         run: python -m unittest discover -s tests -v
       - name: Run synthetic benchmark smoke
         run: python benchmarks/bench_stm.py

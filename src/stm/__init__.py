@@ -9,6 +9,15 @@ from .tokenizer_adapter import (
 )
 from .retention import RetentionPolicy, RetentionAudit, RetainedConversationArchive
 from .vera_bridge import VerifiedConversation, VerifiedRetentionGate, VeraConversationBridge
+from .auth_broker import (
+    ConversationCredentialSpec, HmacCredentialIssuer,
+    HmacConversationBroker, ScopedCleanupAuthority,
+)
+from .retention_runner import SweepTarget, SweepReport, RetentionSweepRunner
+from .storage_privacy import (
+    BackupReceipt, BackupInventory, BackupRetirement,
+    WalCheckpoint, ManagedArchiveBackupVault,
+)
 
 __all__ = [
     "STM", "MemorySession", "AdmissionRejected", "AccessDenied",
@@ -18,4 +27,8 @@ __all__ = [
     "TokenBudgetAdapter",
     "RetentionPolicy", "RetentionAudit", "RetainedConversationArchive",
     "VerifiedConversation", "VerifiedRetentionGate", "VeraConversationBridge",
+    "ConversationCredentialSpec", "HmacCredentialIssuer", "HmacConversationBroker",
+    "ScopedCleanupAuthority", "SweepTarget", "SweepReport", "RetentionSweepRunner",
+    "BackupReceipt", "BackupInventory", "BackupRetirement", "WalCheckpoint",
+    "ManagedArchiveBackupVault",
 ]
