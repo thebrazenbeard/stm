@@ -7,6 +7,8 @@ from .archive_adapter import ArchiveHistoryReader
 from .tokenizer_adapter import (
     ModelTokenizerIdentity, RuntimeTokenCounter, TokenBudgetAdapter,
 )
+from .retention import RetentionPolicy, RetentionAudit, RetainedConversationArchive
+from .vera_bridge import VerifiedConversation, VerifiedRetentionGate, VeraConversationBridge
 
 __all__ = [
     "STM", "MemorySession", "AdmissionRejected", "AccessDenied",
@@ -14,4 +16,6 @@ __all__ = [
     "ArchiveScope", "ArchiveTurn", "ArchiveHit", "ConversationArchive",
     "ArchiveHistoryReader", "ModelTokenizerIdentity", "RuntimeTokenCounter",
     "TokenBudgetAdapter",
+    "RetentionPolicy", "RetentionAudit", "RetainedConversationArchive",
+    "VerifiedConversation", "VerifiedRetentionGate", "VeraConversationBridge",
 ]

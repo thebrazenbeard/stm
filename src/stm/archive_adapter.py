@@ -31,11 +31,15 @@ class ArchiveHistoryReader:
     archive checks host authorization again for every search operation.
     """
 
-    def __init__(self, archive: ConversationArchive, principal: object) -> None:
+    def __init__(self, archive: ConversationArchive, principal: object,
+                 *, require_expiration: bool = False) -> None:
         if archive is None or principal is None:
             raise ValueError("archive and authenticated principal are required")
+        if not isinstance(require_expiration, bool):
+            raise TypeError("require_expiration must be bool")
         self._archive = archive
         self._principal = principal
+        self._require_expiration = require_expiration
 
     def search(
         self,
@@ -53,12 +57,14 @@ class ArchiveHistoryReader:
             raise PermissionError("explicit historical privacy authorization is required")
 
         archive_scope = ArchiveScope(scope.tenant_id, scope.owner_id, scope.agent_id)
+        strict = {"require_expiration": True} if self._require_expiration else {}
         hits = tuple(self._archive.search(
             self._principal,
             archive_scope,
             query,
             privacy_scopes=authorized_privacy_scopes,
             limit=limit,
+            **strict,
         ))
         if len(hits) > limit:
             raise ValueError("archive returned more than the authorized result limit")

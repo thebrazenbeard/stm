@@ -18,7 +18,7 @@ from typing import Callable
 from uuid import uuid4
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MAX_CONTENT_BYTES = 262_144
 MAX_QUERY_CHARS = 4_096
 MAX_QUERY_TERMS = 32
@@ -49,6 +49,7 @@ class ArchiveTurn:
     event_time: str
     recorded_at: str
     supersedes_id: str | None
+    expires_at: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,7 +213,7 @@ class ConversationArchive:
 
     def _init_schema(self) -> None:
         version = int(self._db.execute("PRAGMA user_version").fetchone()[0])
-        if version not in (0, SCHEMA_VERSION):
+        if version not in (0, 1, SCHEMA_VERSION):
             raise RuntimeError(f"unsupported conversation archive schema version {version}")
         with self._db:
             self._db.executescript("""
@@ -230,6 +231,7 @@ class ConversationArchive:
                     event_time TEXT NOT NULL,
                     recorded_at TEXT NOT NULL,
                     supersedes_id TEXT,
+                    expires_at TEXT,
                     active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1))
                 );
                 CREATE INDEX IF NOT EXISTS idx_turns_scope
@@ -262,7 +264,21 @@ class ConversationArchive:
                     VALUES(new.id, new.content);
                 END;
             """)
-            if version == 0:
+            # executescript commits implicitly. Start a new explicit SQLite
+            # transaction so ALTER + index + user_version cannot tear across
+            # an interruption. Also tolerate a field present from an older
+            # interrupted prototype with an unbumped user_version.
+            self._db.execute("BEGIN IMMEDIATE")
+            if version == 1:
+                # Old rows intentionally have no invented expiry timestamp.
+                columns = {row["name"] for row in self._db.execute("PRAGMA table_info(turns)")}
+                if "expires_at" not in columns:
+                    self._db.execute("ALTER TABLE turns ADD COLUMN expires_at TEXT")
+            self._db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_turns_expiration
+                ON turns(tenant_id, owner_id, agent_id, expires_at)
+            """)
+            if version != SCHEMA_VERSION:
                 self._db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
 
     def _check_open(self) -> None:
@@ -300,24 +316,27 @@ class ConversationArchive:
             role=row["role"], content=row["content"], source=row["source"],
             privacy=row["privacy"], event_time=row["event_time"],
             recorded_at=row["recorded_at"], supersedes_id=row["supersedes_id"],
+            expires_at=row["expires_at"],
         )
 
     def _insert(self, scope: ArchiveScope, *, conversation_id: str, role: str,
                 content: str, source: str, privacy: str, event_time: str,
-                supersedes_id: str | None = None) -> ArchiveTurn:
+                supersedes_id: str | None = None,
+                expires_at: str | None = None) -> ArchiveTurn:
         uid = uuid4().hex
         recorded = _utc_iso(datetime.now(timezone.utc))
         self._db.execute("""
             INSERT INTO turns (
                 turn_id, tenant_id, owner_id, agent_id, conversation_id,
                 role, content, source, privacy, event_time, recorded_at,
-                supersedes_id, active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                supersedes_id, expires_at, active
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         """, (uid, scope.tenant_id, scope.owner_id, scope.agent_id,
               conversation_id, role, content, source, privacy,
-              event_time, recorded, supersedes_id))
+              event_time, recorded, supersedes_id, expires_at))
         return ArchiveTurn(uid, conversation_id, role, content, source,
-                           privacy, event_time, recorded, supersedes_id)
+                           privacy, event_time, recorded, supersedes_id,
+                           expires_at)
 
     def append_turn(
         self,
@@ -330,6 +349,7 @@ class ConversationArchive:
         source: str = "conversation",
         privacy: str = "private",
         event_time: datetime | None = None,
+        expires_at: datetime | None = None,
     ) -> ArchiveTurn:
         _nonblank(conversation_id, "conversation_id")
         _nonblank(role, "role")
@@ -337,6 +357,7 @@ class ConversationArchive:
         _nonblank(privacy, "privacy")
         _validate_content(content)
         when = _utc_iso(event_time or datetime.now(timezone.utc))
+        expiry = _utc_iso(expires_at) if expires_at is not None else None
         with self._lock:
             self._check_open()
             self._permission(principal, scope, "append", privacy)
@@ -344,7 +365,8 @@ class ConversationArchive:
             with self._db:
                 turn = self._insert(scope, conversation_id=conversation_id,
                                     role=role, content=content, source=source,
-                                    privacy=privacy, event_time=when)
+                                    privacy=privacy, event_time=when,
+                                    expires_at=expiry)
             self._check_private_files()
             return turn
 
@@ -356,8 +378,20 @@ class ConversationArchive:
         *,
         privacy_scopes: frozenset[str],
         limit: int = 8,
+        require_expiration: bool = False,
+        now: datetime | None = None,
     ) -> tuple[ArchiveHit, ...]:
         match = _safe_match(query)
+        if not isinstance(require_expiration, bool):
+            raise TypeError("require_expiration must be a bool")
+        # A supplied test/host clock may run ahead, but must never roll
+        # retrieval backward and resurrect logically expired rows. Enforce
+        # at least the local wall clock as a lower bound.
+        system_now = datetime.now(timezone.utc)
+        requested_now = now or system_now
+        if requested_now.tzinfo is None or requested_now.utcoffset() is None:
+            raise ValueError("search time must be timezone-aware")
+        cutoff = _utc_iso(max(requested_now.astimezone(timezone.utc), system_now))
         if not isinstance(limit, int) or not 1 <= limit <= MAX_RESULTS:
             raise ValueError("limit must be between 1 and 100")
         if not isinstance(privacy_scopes, frozenset) or not privacy_scopes or any(
@@ -385,6 +419,8 @@ class ConversationArchive:
                 WHERE turns_fts MATCH ? AND t.active = 1
                   AND t.tenant_id = ? AND t.owner_id = ? AND t.agent_id = ?
                   AND t.privacy IN ({placeholders})
+                  AND (t.expires_at IS NULL OR t.expires_at > ?)
+                  AND (? = 0 OR t.expires_at IS NOT NULL)
             """
             query_terms = set(terms)
             selected: list[ArchiveHit] = []
@@ -396,7 +432,9 @@ class ConversationArchive:
                         hit.turn.turn_id)
 
             for row in self._db.execute(sql, (match, scope.tenant_id,
-                                              scope.owner_id, scope.agent_id, *labels)):
+                                              scope.owner_id, scope.agent_id, *labels,
+                                              cutoff,
+                                              int(require_expiration))):
                 turn = self._turn(row)
                 content_terms = set(_TERMS.findall(turn.content.casefold()))
                 item = ArchiveHit(turn, float(len(query_terms & content_terms)))
@@ -439,6 +477,9 @@ class ConversationArchive:
                     source=previous["source"], privacy=previous["privacy"],
                     event_time=_utc_iso(datetime.now(timezone.utc)),
                     supersedes_id=turn_id,
+                    # A correction is not new retention consent and cannot
+                    # reset the ancestor's expiration clock.
+                    expires_at=previous["expires_at"],
                 )
             self._check_private_files()
             return turn
@@ -474,6 +515,66 @@ class ConversationArchive:
                     self._db.execute("DELETE FROM turns WHERE id=?", (candidate["id"],))
             self._check_private_files()
             return True
+
+    def expire_due(
+        self,
+        principal: object,
+        scope: ArchiveScope,
+        *,
+        now: datetime | None = None,
+        privacy_scopes: frozenset[str],
+        limit: int = 100,
+        dry_run: bool = False,
+    ) -> int:
+        """Remove up to ``limit`` expired turns in one authorized transaction.
+
+        Only explicitly expiring, authorized rows inside ``scope`` qualify.
+        Inherited expiry on corrections prevents retention-window extension.
+        This is logical deletion from SQLite/FTS, NOT a forensic guarantee:
+        WAL, old backups, filesystem snapshots and other copies need separate
+        host-side retention controls. Dry-run returns a bounded count only.
+        """
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 1000:
+            raise ValueError("expiry batch limit must be between 1 and 1000")
+        if not isinstance(dry_run, bool):
+            raise TypeError("dry_run must be bool")
+        if not isinstance(privacy_scopes, frozenset) or not privacy_scopes or any(
+            not isinstance(label, str) or not label.strip()
+            for label in privacy_scopes
+        ):
+            raise PermissionError("explicit expiry privacy labels required")
+        cutoff = _utc_iso(now or datetime.now(timezone.utc))
+        labels = tuple(sorted(privacy_scopes))
+        with self._lock:
+            self._check_open()
+            self._permission(principal, scope, "delete")
+            for label in labels:
+                self._permission(principal, scope, "delete", label)
+            placeholders = ",".join("?" for _ in labels)
+            sql = f"""
+                SELECT id, privacy FROM turns
+                WHERE tenant_id=? AND owner_id=? AND agent_id=?
+                  AND expires_at IS NOT NULL AND expires_at <= ?
+                  AND privacy IN ({placeholders})
+                ORDER BY expires_at, id LIMIT ?
+            """
+            if not dry_run:
+                self._db.execute("BEGIN IMMEDIATE")
+            try:
+                rows = self._db.execute(sql, (
+                    scope.tenant_id, scope.owner_id, scope.agent_id,
+                    cutoff, *labels, limit,
+                )).fetchall()
+                if not dry_run:
+                    with self._db:
+                        for row in rows:
+                            self._db.execute("DELETE FROM turns WHERE id=?", (row["id"],))
+            except BaseException:
+                if not dry_run and self._db.in_transaction:
+                    self._db.rollback()
+                raise
+            self._check_private_files()
+            return len(rows)
 
     def close(self) -> None:
         with self._lock:
