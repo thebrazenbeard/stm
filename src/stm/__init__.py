@@ -18,6 +18,20 @@ from .storage_privacy import (
     BackupReceipt, BackupInventory, BackupRetirement,
     WalCheckpoint, ManagedArchiveBackupVault,
 )
+from .handoff_policy import (
+    DEFAULT_REVIEW_AGE, HandoffPolicy, HandoffEligibility,
+    HandoffReviewTicket, HandoffReviewQueue,
+)
+from .deepmemory_handoff import (
+    HISTORICAL_ONLY, TargetGovernance, HistoricalHandoffRecord,
+    HistoricalHandoffReceipt, HistoricalSink, HandoffUnverified,
+    DeepMemoryHandoff,
+)
+from .windows_host_auth import WindowsPeerMemoryGateway, authenticated_windows_sid
+from .android_local_auth import (
+    AndroidAppIdentity, AndroidAppRegistration, AndroidAppPeerGateway,
+    verify_android_binding,
+)
 
 __all__ = [
     "STM", "MemorySession", "AdmissionRejected", "AccessDenied",
@@ -31,4 +45,11 @@ __all__ = [
     "ScopedCleanupAuthority", "SweepTarget", "SweepReport", "RetentionSweepRunner",
     "BackupReceipt", "BackupInventory", "BackupRetirement", "WalCheckpoint",
     "ManagedArchiveBackupVault",
+    "DEFAULT_REVIEW_AGE", "HandoffPolicy", "HandoffEligibility",
+    "HandoffReviewTicket", "HandoffReviewQueue",
+    "HISTORICAL_ONLY", "TargetGovernance", "HistoricalHandoffRecord",
+    "HistoricalHandoffReceipt", "HistoricalSink", "HandoffUnverified",
+    "DeepMemoryHandoff", "WindowsPeerMemoryGateway",
+    "authenticated_windows_sid", "AndroidAppIdentity", "AndroidAppRegistration",
+    "AndroidAppPeerGateway", "verify_android_binding",
 ]

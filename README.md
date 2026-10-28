@@ -2,7 +2,7 @@
 
 STM is a small, dependency-free Python library for **bounded, session-scoped working context** in AI agents and local language models. It stores attributed observations and messages, selects relevant evidence, and constructs a bounded context block. The opt-in conversation archive provides separately authorized retrieval of original conversations across sessions. STM is not a long-term autobiographical memory, a neural-learning mechanism, a model-runtime KV cache, or an identity authority.
 
-**Status:** v0.4 authenticated-host and retention **source candidate** based on v0.3. It is not connected to Vera's live interface: current VeraOS localhost HTTP endpoints do not authenticate callers. Source tests do not establish production installation, real signed-in identity mapping, or complete data erasure.
+**Status:** v0.5 Windows/Android authenticated-local-process and 30-day historical-review **source candidate** based on v0.4. It is not connected to Vera's live interface: current VeraOS localhost HTTP endpoints do not authenticate callers. Source tests do not establish production installation, real signed-in identity mapping, or complete data erasure.
 
 ## Install
 
@@ -82,6 +82,19 @@ See [Vera integration and source findings](docs/vera_local_integration.md) and [
 - The working-context packer now filters explicitly granted privacy labels before retrieval/pinning, so a private-only grant does not need blanket shared/session access.
 
 See [v0.4 privacy/retention matrix](docs/privacy_retention_v04.md), [VeraOS host integration blockers](docs/vera_os_auth_status_v04.md), and [source verification record](docs/v04_qualification.md). The executable [authenticated-host example](examples/authenticated_host_demo.py) uses synthetic credentials; nothing is installed automatically.
+
+## Windows, Android/Linux and governed history handoff (v0.5 candidate)
+
+Patrick proposed **30 days before conversational history becomes eligible for DeepMemoryStorage review**, on Windows and Android/Linux. STM deliberately treats this as *review eligibility*, not an automatic transfer, retention extension, deletion, current identity update or permission to train a model.
+
+- `WindowsPeerMemoryGateway` is an opt-in local Windows named-pipe gateway with explicit account-SID ACLs and client-token impersonation. It permits working-memory operations only; the calling host must map the Windows account to an actual Vera principal. Its simulated policy tests are portable; an OS-backed native test is provided for Windows CI.
+- `AndroidAppPeerGateway` uses Linux `SO_PEERCRED` plus host-provided fresh Android PackageManager identity (package, signing certificate, UID and user profile). The package resolver is an interface, **not implemented Android platform attestation**. Both gateways refuse archive/export operations. Neither authenticates a phone talking over a network to a PC.
+- `HandoffPolicy` calculates 30-day review eligibility separately from source expiration. `HandoffReviewQueue` holds bounded, **in-memory, content-free** tickets and checks live versions/consent; it is not a durable scheduler or migration. A source record expiring **at** day 30 is ineligible: an approved longer deadline or an earlier review window would have to be selected before source expiry.
+- `DeepMemoryHandoff` is an optional *injected-sink contract* that requires current per-turn long-term export consent, archive scope authority, exact provenance, a verified private destination capable of deletion/correction/revocation and finite retention, plus an independently verified receipt. It never deletes source records, connects to a live DMS writer, or silently retries uncertain sends.
+
+**Critical destination boundary:** `thebrazenbeard/deepmemorystorage` is currently a **public** append-only GitHub evidence repository with read/query tooling, not a qualified private conversation-ingestion service. Never export private conversation payloads to that GitHub repo. The new sink is intentionally host-supplied and disabled without independent destination governance.
+
+See [Windows/Android platform and proposed 30-day policy](docs/windows_android_deepmemory_handoff_v05.md). Actual host endpoints, target retention/deletion guarantees, user consent and activation all require separate verification. The in-memory review queue has a capacity ceiling but no durable tombstone or cross-restart retry ledger; it is unsuitable as a production transfer scheduler.
 
 ## Checkpoint and restore
 
