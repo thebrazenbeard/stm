@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stm-short-term-memory"
+version = "0.1.0"
+description = "Bounded, identity-scoped short-term working memory for AI agents"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "STM contributors"}]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["stm*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

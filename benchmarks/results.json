@@ -1,0 +1,129 @@
+{
+  "application_cache": {
+    "backend_kv_reuse": "unverified",
+    "decision_sequence": [
+      "miss",
+      "hit",
+      "miss"
+    ],
+    "hits": 1,
+    "invalidations": 1,
+    "misses": 2
+  },
+  "baselines": {
+    "recency": {
+      "accuracy": 0.5,
+      "mean_context_utf8_bytes": 4058,
+      "mean_latency_ms": 0.9948,
+      "p95_latency_ms": 1.0448,
+      "queries": 16,
+      "retained_exact_target": 8
+    },
+    "sliding": {
+      "accuracy": 0.0,
+      "mean_context_utf8_bytes": 1699,
+      "mean_latency_ms": 0.1103,
+      "p95_latency_ms": 0.1639,
+      "queries": 16,
+      "retained_exact_target": 0
+    },
+    "stm": {
+      "accuracy": 1.0,
+      "mean_context_utf8_bytes": 4006,
+      "mean_latency_ms": 4.5081,
+      "p95_latency_ms": 4.9754,
+      "queries": 16,
+      "retained_exact_target": 16
+    }
+  },
+  "checkpoint": {
+    "full_id_set_equivalence": true,
+    "retrieval_equivalence": true
+  },
+  "concurrency": {
+    "scoped_retrieval_counts": [
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10
+    ],
+    "session_sizes": [
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40,
+      40
+    ],
+    "threads": 8
+  },
+  "configuration": {
+    "context_budget_utf8_bytes": 4096,
+    "events": 1000,
+    "naive_sliding_items": 20,
+    "query_count": 16,
+    "store_capacity": 256
+  },
+  "environment": {
+    "implementation": "CPython",
+    "platform": "Linux-6.18.55-x86_64-with-glibc2.39",
+    "python": "3.12.14"
+  },
+  "fixture": "stm-benchmark-v1",
+  "full_history_utf8_bytes": 50158,
+  "limits": [
+    "No model runtime or tokenizer was used. Budget units and savings are UTF-8 bytes.",
+    "Synthetic exact-answer fixture; not a semantic retrieval benchmark.",
+    "Process-local tracemalloc peak excludes native allocations.",
+    "Latency is Python context-selection time, not inference latency.",
+    "Cache hit is application prefix matching, not backend KV reuse."
+  ],
+  "long_conversation": [
+    {
+      "events_seen": 50,
+      "query_retrieval_mean_ms": 0.647,
+      "stored_items": 50,
+      "target_retained": true
+    },
+    {
+      "events_seen": 100,
+      "query_retrieval_mean_ms": 1.4636,
+      "stored_items": 100,
+      "target_retained": true
+    },
+    {
+      "events_seen": 250,
+      "query_retrieval_mean_ms": 3.7632,
+      "stored_items": 250,
+      "target_retained": true
+    },
+    {
+      "events_seen": 500,
+      "query_retrieval_mean_ms": 3.3227,
+      "stored_items": 256,
+      "target_retained": true
+    },
+    {
+      "events_seen": 1000,
+      "query_retrieval_mean_ms": 3.2471,
+      "stored_items": 256,
+      "target_retained": true
+    }
+  ],
+  "peak_python_allocated_bytes_during_insert": 287600,
+  "stm_context_savings_vs_full_history_pct": 92.01,
+  "store_stats": {
+    "active_sessions": 9,
+    "evictions": 745,
+    "expirations": 0,
+    "items": 256,
+    "max_items": 256,
+    "pinned": 9
+  }
+}
