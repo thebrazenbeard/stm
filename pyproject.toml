@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stm-short-term-memory"
-version = "0.5.0"
+version = "0.6.0"
 description = "Bounded offline agent memory with opt-in local host authentication and governed history handoff"
 readme = "README.md"
 requires-python = ">=3.10"
