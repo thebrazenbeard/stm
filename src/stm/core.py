@@ -230,7 +230,8 @@ class MemorySession:
         return [result.record for result in ranked]
 
     def assemble_context(self, query: str, *, token_budget: int, reserved_tokens: int = 0,
-                         limit: int = 100) -> PromptContext:
+                         limit: int = 100,
+                         authorized_privacy_scopes: frozenset[str] | None = None) -> PromptContext:
         """Pack attributed *data*, never instructions or asserted truths.
 
         Selection is deterministic for fixed records/query/token counter.  Both
@@ -243,10 +244,19 @@ class MemorySession:
             raise ValueError("budgets must be nonnegative")
         if limit < 0:
             raise ValueError("limit must be nonnegative")
+        if authorized_privacy_scopes is not None and (
+            not isinstance(authorized_privacy_scopes, frozenset)
+            or not authorized_privacy_scopes
+            or any(not isinstance(label, str) or not label.strip()
+                   for label in authorized_privacy_scopes)
+        ):
+            raise ValueError("authorized privacy scopes must be a nonempty frozenset")
         now = self._now()
         records = [
             record for record in self._stm.store.list(self.key, now)
-            if self._stm.policy.authorize_read(self.actor, record, now=now)
+            if (authorized_privacy_scopes is None
+                or record.privacy in authorized_privacy_scopes)
+            and self._stm.policy.authorize_read(self.actor, record, now=now)
         ]
         ranked = self._stm.retriever.rank(
             query, records, limit,

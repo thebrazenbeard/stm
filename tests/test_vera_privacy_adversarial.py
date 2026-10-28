@@ -186,8 +186,17 @@ class VeraPrivacyAdversarialTests(unittest.TestCase):
         )
         with self.assertRaises(PermissionError):
             bridge.working_context(
-                object(), "flintcairn", privacy="private", token_budget=800,
+                object(), "flintcairn", privacy="shared", token_budget=800,
             )
+        self.assertEqual(resolutions, 1)
+        # Private-only retrieval is now useful under least privilege, and
+        # never exposes the stored shared record or mixes two broker grants.
+        resolutions = 0
+        packed = bridge.working_context(
+            object(), "flintcairn", privacy="private", token_budget=800,
+        )
+        self.assertNotIn("flintcairn", packed.text)
+        self.assertEqual(resolutions, 1)
 
     def test_history_recall_cannot_mix_two_broker_principals(self):
         # Trusted archive authorizes the owner on both private/shared labels;

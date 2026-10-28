@@ -164,6 +164,27 @@ class RetainedConversationArchive:
         self._scope(principal, scope)
         return self._archive.delete(principal, scope, turn_id)
 
+    def has_legacy_unretained(
+        self,
+        principal: object,
+        scope: ArchiveScope,
+        *,
+        privacy_scopes: frozenset[str],
+    ) -> bool:
+        """Count-free legacy presence audit for maintenance qualification.
+
+        A scheduler can audit policyless rows after consent withdrawal, but
+        cannot erase those rows without a *separate* explicit migration grant.
+        """
+        self._scope(principal, scope)
+        if (not isinstance(privacy_scopes, frozenset)
+                or not privacy_scopes
+                or not privacy_scopes <= self._policy.privacy_labels):
+            raise PermissionError("legacy audit labels must be policy-authorized")
+        return self._archive.has_legacy_unretained(
+            principal, scope, privacy_scopes=privacy_scopes,
+        )
+
     def sweep(
         self, principal: object, scope: ArchiveScope, *,
         privacy_scopes: frozenset[str], limit: int = MAX_SWEEP_BATCH,

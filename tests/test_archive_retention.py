@@ -94,6 +94,31 @@ class ArchiveRetentionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.db.expire_due("host", ALICE, privacy_scopes=PRIVATE, limit=1001)
 
+    def test_policyless_legacy_purge_requires_extra_explicit_authority(self) -> None:
+        legacy = self.append(ALICE, "legacy copper story", None)
+        self.append(BOB, "legacy copper other", None)
+        retained = self.append(ALICE, "future copper story", WHEN + timedelta(days=100))
+        self.assertEqual(self.db.expire_due("host", ALICE,
+                                            privacy_scopes=PRIVATE), 0)
+        with ConversationArchive(
+            self.path, authorize=lambda _p, action, _s: action != "delete_legacy"
+        ) as restricted:
+            with self.assertRaises(PermissionError):
+                restricted.purge_legacy_unretained("host", ALICE,
+                                                  privacy_scopes=PRIVATE)
+        self.assertEqual(self.db.purge_legacy_unretained(
+            "host", ALICE, privacy_scopes=PRIVATE), 1)
+        self.assertEqual(self.db.purge_legacy_unretained(
+            "host", ALICE, privacy_scopes=PRIVATE, dry_run=False), 1)
+        self.assertFalse(self.db.delete("host", ALICE, legacy.turn_id))
+        self.assertEqual([hit.turn.turn_id for hit in self.db.search(
+            "host", ALICE, "copper", privacy_scopes=PRIVATE,
+        )], [retained.turn_id])
+        self.assertEqual(len(self.db.search("host", BOB, "copper",
+                                            privacy_scopes=PRIVATE)), 1)
+        with sqlite3.connect(self.path) as check:
+            check.execute("INSERT INTO turns_fts(turns_fts, rank) VALUES ('integrity-check', 1)")
+
     def test_existing_v1_schema_migrates_without_fabricated_ttl(self) -> None:
         legacy = str(Path(self.tmp.name) / "legacy.sqlite")
         with sqlite3.connect(legacy) as connection:

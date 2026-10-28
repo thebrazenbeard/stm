@@ -2,7 +2,7 @@
 
 STM is a small, dependency-free Python library for **bounded, session-scoped working context** in AI agents and local language models. It stores attributed observations and messages, selects relevant evidence, and constructs a bounded context block. The opt-in conversation archive provides separately authorized retrieval of original conversations across sessions. STM is not a long-term autobiographical memory, a neural-learning mechanism, a model-runtime KV cache, or an identity authority.
 
-**Status:** v0.3 authenticated-host integration **source candidate** based on v0.2. It is not connected to Vera's live interface: the current VeraOS localhost HTTP endpoints do not authenticate callers. Source tests do not establish runtime deployment, verified host authentication, or complete data erasure.
+**Status:** v0.4 authenticated-host and retention **source candidate** based on v0.3. It is not connected to Vera's live interface: current VeraOS localhost HTTP endpoints do not authenticate callers. Source tests do not establish production installation, real signed-in identity mapping, or complete data erasure.
 
 ## Install
 
@@ -72,6 +72,17 @@ The SQLite schema now stores `expires_at`, migrates from v0.2, hides expired row
 
 See [Vera integration and source findings](docs/vera_local_integration.md) and [privacy/retention qualification](docs/privacy_retention_v03.md). This library does **not** attach itself to VeraOS's unauthenticated `/api/conversation` or `/api/conversation/history` endpoints.
 
+## Unblocking authenticated local operation (v0.4 candidate)
+
+- `HmacCredentialIssuer` and `HmacConversationBroker` support short-lived signed conversation grants with issuer, audience, scope, capability, consent and trusted transport binding. Host identity verification, key protection, revocation and single-use replay storage remain mandatory host responsibilities, not assumptions about browser headers.
+- `ScopedCleanupAuthority` issues a **different**, narrowly scoped host-maintenance principal. It can authorize `expire` and `audit_legacy`, **not** arbitrary `delete(turn_id)`, retrieval or archival writes. Old user tokens cannot be reused for offline cleanup.
+- `RetentionSweepRunner` supports explicitly invoked startup catch-up and supervised periodic expiry. Its reports cover registered scopes/labels only, identify incomplete backlogs and refuse to certify completion if policyless legacy records remain in scope. Old rows may be explicitly audited and purged only with separate `delete_legacy` authority.
+- `ManagedArchiveBackupVault` is an optional **whole-database** POSIX-private backup manager requiring separate archive-wide administrator rights. It refuses known policyless/expired content, cannot extend the earliest record deadline, and reports partial retirement and unmanaged copies. It is **not encrypted or forensically erased** and is not qualified for Windows ACLs.
+- `stm.linux_peer_gateway.PeerMemoryGateway` is an opt-in Linux-only working-memory prototype using actual `AF_UNIX`/`SO_PEERCRED` process identity. It is **not a VeraOS desktop/browser integration**, cannot distinguish processes sharing a UID and exposes no archive writes.
+- The working-context packer now filters explicitly granted privacy labels before retrieval/pinning, so a private-only grant does not need blanket shared/session access.
+
+See [v0.4 privacy/retention matrix](docs/privacy_retention_v04.md), [VeraOS host integration blockers](docs/vera_os_auth_status_v04.md), and [source verification record](docs/v04_qualification.md). The executable [authenticated-host example](examples/authenticated_host_demo.py) uses synthetic credentials; nothing is installed automatically.
+
 ## Checkpoint and restore
 
 ```python
@@ -108,6 +119,7 @@ python benchmarks/bench_archive.py --iterations 30
 python examples/basic.py
 python examples/conversation_archive.py
 python examples/vera_bridge_mock.py
+python examples/authenticated_host_demo.py
 ```
 
 These commands verify the source candidate locally. No external service is installed or modified by them.

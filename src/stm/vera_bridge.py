@@ -182,14 +182,13 @@ class VeraConversationBridge:
         token_budget: int,
     ) -> PromptContext:
         grant = self._grant(request, action="working_context", privacy=privacy)
-        # The session API has its own governance for each record. To prevent
-        # mixed-label exposure, authorization must cover every label the
-        # session policy could read, not merely the requested label.
-        if grant.privacy_scopes != ALLOWED_LABELS:
-            raise PermissionError("working-context packing requires full-label broker grant")
-        for label in sorted(ALLOWED_LABELS):
-            self._require_permission(grant, "working_context", label)
-        return self._session(grant).assemble_context(query, token_budget=token_budget)
+        # Filter BEFORE ranking and packing, including pinned material. A
+        # private-only host grant must never require shared/session authority
+        # or leak those labels into the packed prompt.
+        return self._session(grant).assemble_context(
+            query, token_budget=token_budget,
+            authorized_privacy_scopes=frozenset({privacy}),
+        )
 
     def archive_turn(
         self,
