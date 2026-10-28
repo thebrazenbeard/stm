@@ -133,6 +133,7 @@ python examples/basic.py
 python examples/conversation_archive.py
 python examples/vera_bridge_mock.py
 python examples/authenticated_host_demo.py
+python examples/handoff_review_mock.py
 ```
 
 These commands verify the source candidate locally. No external service is installed or modified by them.

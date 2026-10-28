@@ -32,7 +32,9 @@ OTHER_DIGEST = "b" * 64
 class SyntheticPeerSocket:
     """Minimal transport double: tests policy after synthetic kernel identity."""
 
-    family = socket.AF_UNIX
+    # ``skipUnless`` on the test case does not prevent this class body from
+    # being evaluated on Windows, where AF_UNIX may not exist at all.
+    family = getattr(socket, "AF_UNIX", None)
 
     def __init__(self, uid=UID):
         self.uid = uid

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import os
@@ -51,7 +52,7 @@ class ArchiveRetentionTests(unittest.TestCase):
         cutoff = WHEN + timedelta(days=1)
         self.assertEqual(self.db.expire_due("host", ALICE, now=cutoff,
                                            privacy_scopes=PRIVATE, dry_run=True), 2)
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             self.assertEqual(db.execute("SELECT count(*) FROM turns").fetchone()[0], 5)
         self.assertEqual(self.db.expire_due("host", ALICE, now=cutoff,
                                            privacy_scopes=PRIVATE, limit=1), 1)
@@ -62,7 +63,7 @@ class ArchiveRetentionTests(unittest.TestCase):
         self.db.close()
         self.db = ConversationArchive(self.path, authorize=lambda *_: True)
         self.assertFalse(self.db.delete("host", ALICE, first.turn_id))
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             self.assertEqual(db.execute("SELECT count(*) FROM turns").fetchone()[0], 3)
             db.execute("INSERT INTO turns_fts(turns_fts, rank) VALUES ('integrity-check', 1)")
             self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0], "ok")
@@ -116,12 +117,12 @@ class ArchiveRetentionTests(unittest.TestCase):
         )], [retained.turn_id])
         self.assertEqual(len(self.db.search("host", BOB, "copper",
                                             privacy_scopes=PRIVATE)), 1)
-        with sqlite3.connect(self.path) as check:
+        with closing(sqlite3.connect(self.path)) as check, check:
             check.execute("INSERT INTO turns_fts(turns_fts, rank) VALUES ('integrity-check', 1)")
 
     def test_existing_v1_schema_migrates_without_fabricated_ttl(self) -> None:
         legacy = str(Path(self.tmp.name) / "legacy.sqlite")
-        with sqlite3.connect(legacy) as connection:
+        with closing(sqlite3.connect(legacy)) as connection, connection:
             connection.execute("""CREATE TABLE turns (
                 id INTEGER PRIMARY KEY, turn_id TEXT UNIQUE NOT NULL,
                 tenant_id TEXT NOT NULL, owner_id TEXT NOT NULL, agent_id TEXT NOT NULL,

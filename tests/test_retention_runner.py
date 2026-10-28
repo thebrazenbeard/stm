@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -69,7 +70,7 @@ class RetentionRunnerTests(unittest.TestCase):
         return RetentionSweepRunner(self.client, **options)
 
     def count_rows(self) -> int:
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             return db.execute("SELECT count(*) FROM turns").fetchone()[0]
 
     def test_startup_catchup_after_offline_restart_and_no_automatic_background(self):
@@ -93,7 +94,7 @@ class RetentionRunnerTests(unittest.TestCase):
         self.assertEqual(recovered.run_once().deleted, 0)
         self.assertNotIn("blue", repr(receipt))
         self.assertNotIn("alice", repr(receipt))
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute("INSERT INTO turns_fts(turns_fts, rank) VALUES('integrity-check', 1)")
 
     def test_huge_backlog_is_bounded_and_receipts_never_claim_completion_early(self):

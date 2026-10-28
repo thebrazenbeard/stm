@@ -22,7 +22,7 @@ field, and both focused and independent regression tests now pass.
 ## Direct tests on this source tree
 
 1. `env PYTHONPATH=src python -m unittest discover -s tests -q`:
-   **298 run, 0 failures, 8 skipped** (sandbox prevents seven live Linux
+   **300 run, 0 failures, 8 skipped** (sandbox prevents seven live Linux
    socket binds, and the separate Windows-native test is not runnable here).
 2. Fresh Python 3.12 virtual environment in `/tmp/stm_v05_clean_20261028`:
    `pip install --no-cache-dir -e .` built and installed
@@ -30,7 +30,7 @@ field, and both focused and independent regression tests now pass.
    sandbox network access; an approved unrestricted retry succeeded.
 3. Installed package, outside restricted socket sandbox:
    `env -u PYTHONPATH STM_REQUIRE_PEER_SOCKET_TESTS=1 .../bin/python
-   -m unittest discover -s tests -q`: **298 run, 0 failures, 1 skipped**.
+   -m unittest discover -s tests -q`: **300 run, 0 failures, 1 skipped**.
    Seven actual Linux peer socket tests ran; one Windows-native test remained
    skipped because this test machine runs Linux.
 4. Installed-package synthetic example `examples/handoff_review_mock.py`:
@@ -51,8 +51,12 @@ field, and both focused and independent regression tests now pass.
 - The public append-only `thebrazenbeard/deepmemorystorage` Git repository
   cannot be used as a private conversation destination and has no verified
   authenticated write API or deletion guarantee. No live DMS data was changed.
-- Windows real named-pipe test is included in CI but not yet qualified until
-  GitHub's Windows runner executes it successfully. Android PackageManager
+- Windows native named-pipe roundtrip **passed** on the Windows GitHub runner
+  during the initial v0.5 CI. The same run uncovered an unrelated test
+  resource-lifetime issue (raw SQLite diagnostics were not closed) and an
+  Android test import guard bug; those fixes require a full Windows recheck.
+  This establishes a narrow native OS test, not real VeraOS identity mapping.
+  Android PackageManager
   resolver and APK/runtime are synthetic/unbound, not device-verified.
 - No real user sign-in/consent broker, OS key store, cross-device pairing,
   protected file storage for Windows, durable review queue, installed cleanup
