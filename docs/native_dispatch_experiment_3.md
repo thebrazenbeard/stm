@@ -36,7 +36,8 @@ Agent 7 challenged the integrated public API with negative and concurrency tests
 
 - **Dispatch:** SUCCESS — seven genuine child workers created across two waves; six maximum concurrent child slots.
 - **Engineering:** SOURCE-LEVEL SUCCESS for the bounded offline v0.1 candidate, subject to documented limitations.
-- **Integration:** requires an exact remote commit and Draft PR verification; recorded separately after publication.
-- **Runtime:** clean local package installation and offline API execution may be demonstrated; no inference-backend, production installation, or model KV reuse is inferred.
+- **Integration:** SUCCESS — [Draft PR #2](https://github.com/thebrazenbeard/stm/pull/2) is open and unmerged. The initial remote implementation commit and locally tested commit have an identical Git tree, independently verified through GitHub Git data. The exact current head is recorded in the PR.
+- **Runtime:** LOCAL INSTALLED API SUCCESS — a fresh virtual environment installed the distribution, 89 combined tests passed, and the example exercised retrieval, packing, correction, checkpoint and restore. This does **not** establish production installation, inference-backend integration, or model KV reuse.
+- **Remote CI:** GitHub Actions [run 40743444849](https://github.com/thebrazenbeard/stm/actions/runs/40743444849) passed both Python 3.10 and 3.12 package installation, unittest and synthetic benchmark jobs on the initial implementation commit.
 
 **Acceleration:** parallel source research and isolated module development were observed, and independent review found real defects. A controlled single-agent counterfactual was not run; therefore a quantified causal speedup from native delegation is **UNKNOWN**. Dispatch success does not rely on engineering or installation success.
