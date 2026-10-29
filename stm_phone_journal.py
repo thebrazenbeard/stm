@@ -126,6 +126,35 @@ class EncryptedJournal:
                 db.rollback()
                 raise
 
+    def get_request(self, session_id: str, request_id: str):
+        """Authenticated replay lookup by original request ID, never a history search."""
+        self._validate_id(session_id, _SESSION, "session")
+        self._validate_id(request_id, _REQUEST, "request")
+        with self._lock, closing(self._connect()) as db:
+            row = db.execute("SELECT session_id,sealed,binding,created_at FROM turns "
+                             "WHERE request_id=?", (request_id,)).fetchone()
+        if row is None:
+            return None
+        stored_session, sealed, fingerprint, stamp = row
+        if stored_session != session_id:
+            raise JournalError("request ID belongs to another session")
+        try:
+            if not isinstance(sealed, bytes) or len(sealed) < 29:
+                raise JournalError("invalid encrypted turn")
+            raw = self._cipher.decrypt(sealed[:12], sealed[12:],
+                                       self._aad(session_id, request_id))
+            if not hmac.compare_digest(
+                    self._binding(session_id, request_id, raw), fingerprint):
+                raise JournalError("request integrity invalid")
+            payload = json.loads(raw)
+            self._data(session_id, request_id, payload["model"],
+                       payload["user"], payload["assistant"])
+        except Exception as exc:
+            raise JournalError("request authentication failed") from exc
+        return {"request_id": request_id, "model": payload["model"],
+                "user": payload["user"], "assistant": payload["assistant"],
+                "created_at": stamp}
+
     def recent(self, session_id: str, limit: int = 10, max_bytes: int = 16000):
         self._validate_id(session_id, _SESSION, "session")
         if type(limit) is not int or not 1 <= limit <= 100:
