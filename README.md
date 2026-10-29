@@ -2,7 +2,7 @@
 
 STM is a small, dependency-free Python library for **bounded, session-scoped working context** in AI agents and local language models. It stores attributed observations and messages, selects relevant evidence, and constructs a bounded context block. The opt-in conversation archive provides separately authorized retrieval of original conversations across sessions. STM is not a long-term autobiographical memory, a neural-learning mechanism, a model-runtime KV cache, or an identity authority.
 
-**Status:** v0.6 selected 30/45-day local-history policy **source candidate**, based on v0.5 Windows/Android authenticated-local-process and governed historical review. It is not connected to Vera's live interface: current VeraOS localhost HTTP endpoints do not authenticate callers. Source tests do not establish production installation, real signed-in identity mapping, or complete data erasure.
+**Status:** v0.7 **source candidate** (v0.1-v0.7 review stack). The library implements working-memory APIs, opt-in SQLite conversation evidence, consent/retention boundaries, prototype Windows and Android/Linux local-process authentication, and a durable clock-fence for supervised retention. It is **not connected** to a verified signed-in VeraOS/VeraAPK conversation producer, does not operate a host scheduler or a private DeepMemoryStorage writer, and has never qualified complete deletion of all journals/backups. A successful source test is not evidence of live host integration.
 
 ## Install
 
@@ -102,6 +102,13 @@ Patrick selected **review eligibility on day 30 and hard local source expiry on 
 
 See [selected policy and effect limitations](docs/retention_30_45_v06.md). This applies to newly admitted opt-in archive turns through the configured host policy; it does not silently rewrite old history, grant long-term-memory permission, or activate a Windows/Android Vera service.
 
+## v0.7 durable retention clock fence (source candidate)
+
+`DurableClockFence` holds a transactional high-water mark for a host-provided UTC clock. It refuses backward observations across restarts and refuses to silently recreate an absent clock database. `SupervisedRetention` performs a clock preflight before a bounded host-owned sweep. It does not start a service or supervise its own scheduler.
+
+The host must provide and secure the real user/session authenticator, current consent store, complete retention scope registry, a protected clock DB, supervised day-45 deletion, journal/backup retirement, and an independently qualified private DMS destination and specific export consent. The same clock fence must govern retention writes, reads, and sweeps; direct raw-archive access bypasses the wrapper and is not an approved deployment interface. This cannot detect every offline clock rollback or prove forensic erasure.
+
+See [v0.7 durable clock-fence qualification](docs/retention_clock_fence_v07.md) and [the selected 30/45 policy](docs/retention_30_45_v06.md). Day 30 means **review eligibility only**; day 45 remains the local source deadline even when a handoff fails.
 ## Checkpoint and restore
 
 ```python
