@@ -6,7 +6,10 @@ The `DurableClockFence` records the highest UTC wall-clock observation in an
 independent local SQLite file. A lower subsequent observation raises
 `PermissionError`; restarting the process does not clear that watermark.
 `SupervisedRetention.run_once()` checks the clock before invoking the existing
-bounded `RetentionSweepRunner`. Nothing starts a background service.
+bounded `RetentionSweepRunner`. The supervisor also rejects a fabricated runner,
+any retained archive with a different clock, and replacement of the archive
+clock after construction. Use the exact `fence.now` callback for retained reads,
+writes and sweeps. Nothing starts a background service.
 
 Host integration must construct a single trusted fence and pass `fence.now`
 as the clock to **both** the `RetainedConversationArchive` (for append, search,

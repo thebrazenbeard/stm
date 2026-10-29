@@ -15,6 +15,9 @@ import sqlite3
 from threading import RLock
 from typing import Callable
 
+from .retention_runner import RetentionSweepRunner
+from .retention import RetainedConversationArchive
+
 
 class DurableClockFence:
     """Transactionally persist the last observed UTC instant across restarts."""
@@ -96,13 +99,28 @@ class SupervisedRetention:
     and separately schedule, restart and monitor this one-shot runner.
     """
 
-    def __init__(self, fence: DurableClockFence, runner: object):
-        if not isinstance(fence, DurableClockFence) or not callable(getattr(runner, "run_once", None)):
-            raise TypeError("durable fence and supervised runner required")
+    def __init__(self, fence: DurableClockFence, runner: RetentionSweepRunner):
+        if not isinstance(fence, DurableClockFence):
+            raise PermissionError("durable retention fence required")
         self._fence = fence
         self._runner = runner
+        self._check_clock_binding()
+
+    def _check_clock_binding(self) -> None:
+        """Reject an unfenced archive, including changes after construction."""
+        runner = self._runner
+        if not isinstance(runner, RetentionSweepRunner):
+            raise PermissionError("real policy-controlled retention runner required")
+        retained = runner._archive
+        if not isinstance(retained, RetainedConversationArchive):
+            raise PermissionError("policy-controlled archive required")
+        clock = retained._clock
+        if (getattr(clock, "__self__", None) is not self._fence
+                or getattr(clock, "__func__", None) is not DurableClockFence.now):
+            raise PermissionError("retention archive must use this durable clock fence")
 
     def run_once(self) -> object:
+        self._check_clock_binding()
         self._fence.now()
         return self._runner.run_once()
 

@@ -52,7 +52,7 @@ class DurableClockFenceTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 fence.now()
 
-    def test_supervisor_blocks_cleanup_when_clock_rolls_back(self):
+    def test_supervisor_does_not_accept_arbitrary_callable(self):
         class Recorder:
             calls = 0
             def run_once(self):
@@ -60,14 +60,9 @@ class DurableClockFenceTests(unittest.TestCase):
                 return self.calls
         runner = Recorder()
         with DurableClockFence(self.path, wall_clock=self.clock, initialize=True) as fence:
-            supervisor = SupervisedRetention(fence, runner)
-            self.assertEqual(supervisor.run_once(), 1)
-            self.now += timedelta(days=2)
-            self.assertEqual(supervisor.run_once(), 2)
-            self.now -= timedelta(days=1)
             with self.assertRaises(PermissionError):
-                supervisor.run_once()
-            self.assertEqual(runner.calls, 2)
+                SupervisedRetention(fence, runner)
+            self.assertEqual(runner.calls, 0)
 
     def test_rollback_blocks_real_archived_history_reads(self):
         from stm.archive import ArchiveScope, ConversationArchive

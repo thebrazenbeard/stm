@@ -104,7 +104,7 @@ See [selected policy and effect limitations](docs/retention_30_45_v06.md). This 
 
 ## v0.7 durable retention clock fence (source candidate)
 
-`DurableClockFence` holds a transactional high-water mark for a host-provided UTC clock. It refuses backward observations across restarts and refuses to silently recreate an absent clock database. `SupervisedRetention` performs a clock preflight before a bounded host-owned sweep. It does not start a service or supervise its own scheduler.
+`DurableClockFence` holds a transactional high-water mark for a host-provided UTC clock. It refuses backward observations across restarts and refuses to silently recreate an absent clock database. `SupervisedRetention` requires a real `RetentionSweepRunner` whose retained archive uses the exact same `DurableClockFence.now` callback; it checks that binding on construction and immediately before each sweep. A fake runner or independent/unfenced archive clock is rejected. It does not start a service or supervise its own scheduler.
 
 The host must provide and secure the real user/session authenticator, current consent store, complete retention scope registry, a protected clock DB, supervised day-45 deletion, journal/backup retirement, and an independently qualified private DMS destination and specific export consent. The same clock fence must govern retention writes, reads, and sweeps; direct raw-archive access bypasses the wrapper and is not an approved deployment interface. This cannot detect every offline clock rollback or prove forensic erasure.
 
