@@ -109,6 +109,17 @@ See [selected policy and effect limitations](docs/retention_30_45_v06.md). This 
 The host must provide and secure the real user/session authenticator, current consent store, complete retention scope registry, a protected clock DB, supervised day-45 deletion, journal/backup retirement, and an independently qualified private DMS destination and specific export consent. The same clock fence must govern retention writes, reads, and sweeps; direct raw-archive access bypasses the wrapper and is not an approved deployment interface. This cannot detect every offline clock rollback or prove forensic erasure.
 
 See [v0.7 durable clock-fence qualification](docs/retention_clock_fence_v07.md) and [the selected 30/45 policy](docs/retention_30_45_v06.md). Day 30 means **review eligibility only**; day 45 remains the local source deadline even when a handoff fails.
+## Bounded host-operated expiry pass (review candidate)
+
+`stm.host_retention.run_guarded_once` runs one supervised, clock-fenced
+retention pass with a required content-free audit callback. An unfinished
+backlog, legacy unretained rows, or audit failure **does not count as
+successful maintenance**. A disposable 45-day synthetic example is included.
+This code does **not** install a Windows scheduled task, connect to Vera, or
+provide evidence that production journals and backups are erased.
+
+See [host one-shot retention source contract](docs/host_retention_one_shot_source.md).
+
 ## Checkpoint and restore
 
 ```python
