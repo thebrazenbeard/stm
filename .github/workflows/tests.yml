@@ -22,6 +22,12 @@ jobs:
         env:
           STM_REQUIRE_PEER_SOCKET_TESTS: "1"
         run: python -m unittest discover -s tests -v
+      - name: Install account-export test dependencies when present
+        if: ${{ hashFiles('requirements-account-import.txt') != '' }}
+        run: python -m pip install -r requirements-account-import.txt
+      - name: Validate account-export synthetic gates when present
+        if: ${{ hashFiles('requirements-account-import.txt') != '' }}
+        run: python -m unittest discover -s . -p "test_chatgpt*.py" -v
       - name: Run synthetic benchmark smoke
         run: python benchmarks/bench_stm.py
 
@@ -36,3 +42,9 @@ jobs:
         run: python -m pip install -e .
       - name: Run Windows and platform-independent contract tests
         run: python -m unittest discover -s tests -v
+      - name: Install account-export test dependencies when present
+        if: ${{ hashFiles('requirements-account-import.txt') != '' }}
+        run: python -m pip install -r requirements-account-import.txt
+      - name: Validate account-export synthetic gates when present
+        if: ${{ hashFiles('requirements-account-import.txt') != '' }}
+        run: python -m unittest discover -s . -p "test_chatgpt*.py" -v

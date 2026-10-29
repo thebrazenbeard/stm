@@ -8,3 +8,11 @@ htmlcov/
 build/
 dist/
 *.json.tmp
+# Private ChatGPT account export and encrypted local-vault artifacts.
+*.zip
+*.zip.aesgcm
+*.sqlite3
+*.sqlite3-*
+*.db
+*.key
+key.bin
