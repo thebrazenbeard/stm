@@ -395,6 +395,16 @@ class ChatGPTArchive:
                                      (export_sha,)).fetchone()[0]
                 if rows != indexed + duplicates or len(seen) != indexed:
                     raise ImportFailure("conversation indexing reconciliation failed")
+                # Parsing occurs after the encrypted ZIP copy.  Recheck the
+                # original source *before* committing an index: otherwise a
+                # valid ZIP replaced between those phases could yield sealed
+                # records from a different export while both the archive
+                # ciphertext and individual records still authenticate.
+                # This costs a source read but preserves source/index lineage.
+                final_sha, final_size = self._source_digest(source)
+                if (final_size != input_bytes or
+                        not hmac.compare_digest(final_sha, export_sha)):
+                    raise ImportFailure("source changed during indexing")
                 db.execute("UPDATE imports SET source_rows=?,unique_conversations=?,"
                            "duplicate_rows=?,message_nodes=? WHERE export_sha=?",
                            (rows,indexed,duplicates,message_nodes,export_sha))

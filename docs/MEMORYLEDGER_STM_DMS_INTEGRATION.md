@@ -14,6 +14,19 @@
 
 Primary inspected contracts: MemoryLedger [lifecycle contract (draft)](https://github.com/thebrazenbeard/MemoryLedger/blob/work/memory-lifecycle-contracts-v0-20261029/docs/MEMORY_LIFECYCLE_CONTRACT_V0.md); STM [retention 30/45](https://github.com/thebrazenbeard/stm/blob/main/docs/retention_30_45_v06.md) and [Windows/Android handoff](https://github.com/thebrazenbeard/stm/blob/main/docs/windows_android_deepmemory_handoff_v05.md); DMS [integration contract](https://github.com/thebrazenbeard/deepmemorystorage/blob/main/architecture/DEEP_MEMORY_INTEGRATION_CONTRACT_V1.md) and [record semantics](https://github.com/thebrazenbeard/deepmemorystorage/blob/main/schema/DEEP_MEMORY_RECORD_V1.md).
 
+### Adjacent provenance components and Vera Mono's exact source fence
+
+Source inspection on 2026-10-29 confirms distinct adjacent roles, not an automatically connected account-history pipeline:
+
+| Source | Observed `main` commit | Bounded relevance |
+| --- | --- | --- |
+| [Ingest](https://github.com/thebrazenbeard/ingest) | `8ffb70c75a42f900c9c645970131ffb0da834925` | Exact-byte intake, content-addressed receipts and deterministic derivatives; neither private-at-rest encryption nor truth/admission follows merely from its source contract. |
+| [Roots](https://github.com/thebrazenbeard/roots) | `d6166522611e0fa48cd246f63b4e74a6a39bb375` | Read-only candidate discovery and provenance-oriented chronology; oldest accessible occurrence is not proven origin, and similarity is not lineage. |
+| [Temporal](https://github.com/thebrazenbeard/temporal) | `f115b97f87782f2184508ec8f92c4e10b115aef5` | Bounded time-coded event logging/query; event time is caller-supplied and the logger does not independently prove occurrence, memory, consent or current state. |
+| [Vera Mono](https://github.com/thebrazenbeard/vera-mono) | `5be71f4c9171417f8d492db341a058a7072822ae` | Runtime-owned composition, governed-current memory/CAS admission, and locally absorbed donor mechanisms; external research repositories are not runtime source dependencies. |
+
+**Important exact-commit mismatch:** Vera Mono's optional `PinnedDeepMemoryCLITransport` currently binds a previously reviewed DeepMemoryStorage source commit, `63edbc51fb87c889ab58051d02e18ba2aeca0d24`. The observed public DMS `main` is now `47681d52923d05a66060e60a88c5e020e540f8c1`. The transport is designed to fail closed if an operator substitutes that newer checkout without an explicit reviewed source-pin update. Neither the old pinned reader nor the newer public ledger supplies a private authenticated STM handoff sink or consent/revocation propagation. Requalifying the read-only source adapter and building a private writer are **separate** tasks; importing Patrick's private export into either public repository is not authorized by these interfaces.
+
 ## One pipeline, distinct owners
 
 | Plane / component | Responsibility | Explicit non-responsibility |

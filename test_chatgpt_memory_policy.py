@@ -51,6 +51,20 @@ class MemoryPolicyTests(unittest.TestCase):
         result = classify_candidate(candidate(), owner(owner_key="someone-else"), now=NOW)
         self.assertEqual(result.disposition, CandidateDisposition.DENIED)
 
+    def test_truthy_nonboolean_authentication_never_grants_review(self):
+        for forged in ("false", "true", 1, [1], {"verified": True}):
+            with self.subTest(forged_type=type(forged).__name__):
+                result = classify_candidate(candidate(), owner(principal_verified=forged), now=NOW)
+                self.assertEqual(result.disposition, CandidateDisposition.DENIED)
+                self.assertEqual(result.reason, "owner_authentication_required")
+
+    def test_truthy_nonboolean_opt_in_never_grants_review(self):
+        for forged in ("false", "true", 1, [1], {"opted_in": True}):
+            with self.subTest(forged_type=type(forged).__name__):
+                result = classify_candidate(candidate(), owner(opted_in=forged), now=NOW)
+                self.assertEqual(result.disposition, CandidateDisposition.DENIED)
+                self.assertEqual(result.reason, "explicit_recall_review_consent_required")
+
     def test_consent_requires_exact_scope_and_explicit_opt_in(self):
         for context in (
             owner(opted_in=False),

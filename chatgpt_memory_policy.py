@@ -119,9 +119,12 @@ def classify_candidate(candidate: HistoricalCandidate, context: OwnerContext,
     current = _utc(now)
     if not isinstance(candidate, HistoricalCandidate) or not isinstance(context, OwnerContext):
         raise TypeError("candidate and owner context required")
-    if not context.principal_verified or not context.owner_key or context.owner_key != candidate.owner_key:
+    # Do not let truthy non-booleans (for example client JSON strings such as
+    # "false", or integer 1) masquerade as an authenticated owner or consent.
+    # This remains a policy check, not a replacement for external authentication.
+    if context.principal_verified is not True or not context.owner_key or context.owner_key != candidate.owner_key:
         return CandidateDecision(CandidateDisposition.DENIED, "owner_authentication_required")
-    if not context.opted_in or context.consent_scope != RECALL_SCOPE:
+    if context.opted_in is not True or context.consent_scope != RECALL_SCOPE:
         return CandidateDecision(CandidateDisposition.DENIED, "explicit_recall_review_consent_required")
     if context.consent_valid_at is None or _utc(context.consent_valid_at) > current:
         return CandidateDecision(CandidateDisposition.DENIED, "valid_consent_time_required")
