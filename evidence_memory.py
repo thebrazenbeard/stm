@@ -97,6 +97,7 @@ class EvidenceMemory:
             raise EvidenceError("invalid source field")
         if (not 1 <= len(owner) <= 128 or not 1 <= len(source_id) <= 256
                 or not 1 <= len(title) <= 256 or not 1 <= len(locator) <= 512
+                or len(observed_at) > 128 or len(source_kind) > 128
                 or not 1 <= len(text.encode("utf-8")) <= 1024*1024):
             raise EvidenceError("invalid or oversized source")
         if epistemic_status not in (
@@ -147,6 +148,8 @@ class EvidenceMemory:
     def search(self, *, owner, query, limit=3, max_chars=2500):
         if type(owner) is not str or not 1 <= len(owner) <= 128:
             raise EvidenceError("authenticated owner namespace required")
+        if type(query) is not str or len(query) > 4096:
+            raise EvidenceError("invalid or oversized search query")
         if type(limit) is not int or not 1 <= limit <= 8:
             raise EvidenceError("invalid retrieval limit")
         if type(max_chars) is not int or not 400 <= max_chars <= 8000:
@@ -194,9 +197,26 @@ class EvidenceMemory:
             source={k:rec[k] for k in (
                 "source_id","title","locator","observed_at",
                 "epistemic_status","sha256")}
-            parts.append(f"SOURCE {i}: "+json.dumps(source,ensure_ascii=False)+
-                         "\n"+json.dumps(rec["excerpt"],ensure_ascii=False))
-        return head+"\n".join(parts)
+            prefix=f"SOURCE {i}: "+json.dumps(source,ensure_ascii=False)+"\n"
+            separator="\n" if parts else ""
+            spent=len(head)+len("\n".join(parts))+len(separator)+len(prefix)
+            available=max_chars-spent
+            if not rec["excerpt"] or available < len(json.dumps(
+                    rec["excerpt"][:1],ensure_ascii=False)):
+                # Keep intact provenance or omit this citation; never emit
+                # a partial metadata object or uncited source text.
+                continue
+            low,high=1,len(rec["excerpt"])
+            while low < high:
+                mid=(low+high+1)//2
+                if len(json.dumps(rec["excerpt"][:mid],
+                                  ensure_ascii=False)) <= available:
+                    low=mid
+                else:
+                    high=mid-1
+            parts.append(prefix+json.dumps(rec["excerpt"][:low],
+                                           ensure_ascii=False))
+        return head+"\n".join(parts) if parts else ""
 
     def status(self, *, owner):
         with self.lock,closing(self._db()) as db:
