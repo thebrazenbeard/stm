@@ -37,6 +37,19 @@ class JournalTests(unittest.TestCase):
         reopened = EncryptedJournal(self.db, self.key)
         self.assertEqual(reopened.recent(S)[0]["model"], "vera-local:latest")
 
+    def test_lookup_request_with_integrity_and_session_isolation(self):
+        self.assertIsNone(self.store.get_request(S, R))
+        self.put()
+        saved = self.store.get_request(S, R)
+        self.assertEqual(saved["user"], U)
+        self.assertEqual(saved["assistant"], "Private answer goes here")
+        with self.assertRaises(JournalError):
+            self.store.get_request("another_private_session", R)
+        with closing(sqlite3.connect(self.db)) as db, db:
+            db.execute("UPDATE turns SET sealed=? WHERE request_id=?", (b"tampered", R))
+        with self.assertRaises(JournalError):
+            self.store.get_request(S, R)
+
     def test_idempotent_request_and_conflict(self):
         self.assertEqual(self.put(), self.put())
         with self.assertRaises(JournalError):
