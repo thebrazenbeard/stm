@@ -79,6 +79,22 @@ class ArchiveTests(unittest.TestCase):
         result = self.arc.import_zip(p)
         self.assertEqual(result["unique_conversations"],1)
 
+    def test_object_wrapper_missing_conversations_cannot_be_silently_skipped(self):
+        p = self.root / "missing-wrapper.zip"
+        makezip(p, {"conversations.json": [conv("id-one", "valid")],
+                    "conversations_1.json": {"unexpected": [conv("id-two", "lost")]}})
+        with self.assertRaisesRegex(ImportFailure, "conversation wrapper lacks"):
+            self.arc.import_zip(p)
+        self.assertEqual(self.arc.status()["exports"], 0)
+
+    def test_object_wrapper_nonarray_conversations_rejected(self):
+        p = self.root / "invalid-wrapper.zip"
+        makezip(p, {"conversations.json": [conv("id-one", "valid")],
+                    "conversations_1.json": {"conversations": {"id": "not-an-array"}}})
+        with self.assertRaisesRegex(ImportFailure, "conversation wrapper must"):
+            self.arc.import_zip(p)
+        self.assertEqual(self.arc.status()["exports"], 0)
+
     def test_duplicate_identical_rows_counted_without_losing_records(self):
         p = self.root / "repeat.zip"
         record = conv("id-one","repeat")
@@ -174,7 +190,7 @@ class ArchiveTests(unittest.TestCase):
     def test_export_no_metadata_loss_and_no_path_extraction(self):
         p=self.root/"assets.zip"
         makezip(p,{"conversations.json":[conv("id-one","title",{"arbitrary":"preserved"})],
-                   "../../outside.txt":b"do not extract this"})
+                   "assets/outside.txt":b"do not extract this"})
         report=self.arc.import_zip(p)
         self.assertEqual(self.arc.conversation(report["export_sha256"],"id-one")
                          ["metadata"]["other_fields"]["arbitrary"],"preserved")

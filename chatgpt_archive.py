@@ -17,8 +17,10 @@ from pathlib import Path
 import re
 import shutil
 import sqlite3
+import stat
 import struct
 import tempfile
+import unicodedata
 import zipfile
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -31,6 +33,11 @@ _PART = re.compile(r"conversations(?:[-_]?[0-9]+)?\.json\Z", re.IGNORECASE)
 _SHA = re.compile(r"[a-f0-9]{64}\Z")
 _CHUNK = 1024 * 1024
 _MAX_CONVERSATION = 128 * 1024 * 1024
+_MAX_ZIP_MEMBERS = 50_000
+_MAX_ZIP_MEMBER_BYTES = 32 * 1024**3
+_MAX_ZIP_TOTAL_BYTES = 128 * 1024**3
+_ZIP_RATIO_THRESHOLD_BYTES = 64 * 1024**2
+_MAX_ZIP_EXPANSION_RATIO = 250
 
 
 class ImportFailure(ValueError):
@@ -181,8 +188,53 @@ class ChatGPTArchive:
         return True
 
     @staticmethod
-    def _parts(source_zip):
-        candidates = [f for f in source_zip.infolist()
+    def _safe_zip_members(source_zip):
+        """Fail closed on dangerous ZIP metadata without extracting any member.
+
+        Bounds cover *all* members, not merely the conversation JSON shards.
+        The source ZIP remains losslessly encrypted as received if admitted.
+        """
+        members = source_zip.infolist()
+        if not members or len(members) > _MAX_ZIP_MEMBERS:
+            raise ImportFailure("ZIP member count is missing or exceeds safety budget")
+        seen = set()
+        total = 0
+        for member in members:
+            filename = member.filename.replace("\\", "/")
+            # ZIP names have no portable interpretation for these path forms.
+            if (not filename or len(filename) > 4096 or filename.startswith("/")
+                    or filename.startswith("//") or "\x00" in filename):
+                raise ImportFailure("unsafe ZIP member path")
+            components = filename.rstrip("/").split("/")
+            if (any(component in ("", ".", "..") for component in components)
+                    or ":" in components[0]):
+                raise ImportFailure("unsafe ZIP member path")
+            normalized = unicodedata.normalize("NFC", filename.rstrip("/")).casefold()
+            if normalized in seen:
+                raise ImportFailure("ZIP member path collision")
+            seen.add(normalized)
+            if member.flag_bits & 1:
+                raise ImportFailure("encrypted ZIP members are unsupported")
+            # The Unix mode is represented in the high word of external_attr.
+            if member.create_system == 3 and stat.S_IFMT(member.external_attr >> 16) == stat.S_IFLNK:
+                raise ImportFailure("ZIP symbolic links are unsupported")
+            if member.file_size < 0 or member.compress_size < 0:
+                raise ImportFailure("invalid ZIP member size")
+            if member.file_size > _MAX_ZIP_MEMBER_BYTES:
+                raise ImportFailure("ZIP member exceeds per-file safety budget")
+            total += member.file_size
+            if total > _MAX_ZIP_TOTAL_BYTES:
+                raise ImportFailure("ZIP total expanded size exceeds safety budget")
+            if (member.file_size >= _ZIP_RATIO_THRESHOLD_BYTES and
+                    member.file_size > _MAX_ZIP_EXPANSION_RATIO * max(1, member.compress_size)):
+                raise ImportFailure("suspicious ZIP member expansion ratio")
+        return members
+
+    @staticmethod
+    def _parts(source_zip, members=None):
+        if members is None:
+            members = ChatGPTArchive._safe_zip_members(source_zip)
+        candidates = [f for f in members
                       if not f.is_dir() and
                       f.filename.replace("\\", "/").rsplit("/",1)[-1].lower().startswith("conversations")
                       and f.filename.lower().endswith(".json")]
@@ -195,6 +247,21 @@ class ChatGPTArchive:
             raise ImportFailure("no ChatGPT conversations JSON parts in ZIP")
         if any(x.flag_bits & 1 for x in files):
             raise ImportFailure("password-protected conversation parts not supported")
+        # A gap means a numbered shard was omitted, even when the available
+        # shards themselves parse successfully. Accept a zero- or one-based
+        # starting index to retain older one-based export compatibility.
+        indices = []
+        for part in files:
+            name = part.filename.replace("\\", "/").rsplit("/",1)[-1]
+            suffix = name[len("conversations"):-len(".json")]
+            indices.append(int(suffix.lstrip("-_")) if suffix else 0)
+        if len(set(indices)) != len(indices):
+            raise ImportFailure("duplicate conversation shard index")
+        indices.sort()
+        if indices[0] not in (0, 1):
+            raise ImportFailure("conversation shard sequence lacks its first part")
+        if any(next_index != index + 1 for index, next_index in zip(indices, indices[1:])):
+            raise ImportFailure("missing numbered conversation shard")
         return files
 
     @staticmethod
@@ -205,6 +272,19 @@ class ChatGPTArchive:
             prefix = "item"
         elif first.startswith(b"{"):
             prefix = "conversations.item"
+            # ijson.items(..., "conversations.item") silently produces zero
+            # rows if the expected property is absent or has the wrong type.
+            # That could certify an incomplete multi-part export as complete.
+            found_array = False
+            with archive.open(info) as part:
+                for path, event, _ in ijson.parse(part, use_float=True):
+                    if path == "conversations":
+                        if event != "start_array":
+                            raise ImportFailure("conversation wrapper must contain an array")
+                        found_array = True
+                        break
+            if not found_array:
+                raise ImportFailure("conversation wrapper lacks conversations array")
         else:
             raise ImportFailure("unknown conversation JSON shape")
         with archive.open(info) as part:
@@ -228,6 +308,14 @@ class ChatGPTArchive:
         source = Path(source).resolve(strict=True)
         if not source.is_file() or not zipfile.is_zipfile(source):
             raise ImportFailure("input must be a valid ZIP file")
+        # Inspect the entire central directory *before* computing the checksum
+        # and copying a potentially unsafe multi-gigabyte archive into the vault.
+        try:
+            with zipfile.ZipFile(source) as source_zip:
+                members = self._safe_zip_members(source_zip)
+                self._parts(source_zip, members)
+        except (zipfile.BadZipFile, zipfile.LargeZipFile, OSError) as exc:
+            raise ImportFailure("ZIP central directory could not be validated") from exc
         export_sha, input_bytes = self._source_digest(source)
         archive_name = self.source_path(export_sha).name
         with closing(self._db()) as db:
@@ -236,7 +324,22 @@ class ChatGPTArchive:
                                   (export_sha,)).fetchone()
         if existing is not None:
             if existing[4] != 1:
-                raise ImportFailure("previous import is incomplete; reconcile before reimport")
+                # A crash may occur after the atomic SQLite commit but before
+                # the final verified flag was set. Only recover after BOTH a
+                # complete source-to-index recount and authenticated readback.
+                # This deliberately costs an extra scan of the source ZIP.
+                from chatgpt_source_recount import verify_source_index
+                verify_source_index(self, source, export_sha)
+                checked = self.verify(export_sha)
+                if checked["verified"] != existing[1]:
+                    raise ImportFailure("interrupted import could not be reconciled")
+                with closing(self._db()) as db, db:
+                    db.execute("UPDATE imports SET verified=1 "
+                               "WHERE export_sha=? AND verified=0", (export_sha,))
+                return {"export_sha256":export_sha,"source_rows":existing[0],
+                        "unique_conversations":existing[1],"part_files":existing[2],
+                        "duplicate_rows":existing[3],"indexed_conversations":existing[1],
+                        "status":"recovered_after_full_source_reconciliation"}
             self.verify(export_sha)
             return {"export_sha256":export_sha,"source_rows":existing[0],
                     "unique_conversations":existing[1],"part_files":existing[2],
@@ -356,13 +459,17 @@ class ChatGPTArchive:
                                 (export_sha,)).fetchone()
             if record is None:
                 raise ImportFailure("export not present in index")
-            rows = db.execute("SELECT conversation_token,sealed,digest FROM conversations "
-                              "WHERE export_sha=?",(export_sha,)).fetchall()
-        for token,sealed,digest in rows:
-            self._open_record(export_sha,token,sealed,digest)
-        if len(rows) != record[1] or record[0] != len(rows) + record[2]:
+            verified = 0
+            # A full export can contain hundreds of megabytes of ciphertext.
+            # Read and authenticate one row at a time, not fetchall() into RAM.
+            for token, sealed, digest in db.execute(
+                    "SELECT conversation_token,sealed,digest FROM conversations "
+                    "WHERE export_sha=?", (export_sha,)):
+                self._open_record(export_sha, token, sealed, digest)
+                verified += 1
+        if verified != record[1] or record[0] != verified + record[2]:
             raise ImportFailure("archive index count mismatch")
-        return {"export_sha256":export_sha,"verified":len(rows),
+        return {"export_sha256":export_sha,"verified":verified,
                 "source_rows":record[0],"part_files":record[3],"archive_verified":True}
 
     def status(self):
