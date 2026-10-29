@@ -313,7 +313,8 @@ class ChatGPTArchive:
         try:
             with zipfile.ZipFile(source) as source_zip:
                 members = self._safe_zip_members(source_zip)
-                self._parts(source_zip, members)
+                parts_preflight = self._parts(source_zip, members)
+                conversation_bytes = sum(part.file_size for part in parts_preflight)
         except (zipfile.BadZipFile, zipfile.LargeZipFile, OSError) as exc:
             raise ImportFailure("ZIP central directory could not be validated") from exc
         export_sha, input_bytes = self._source_digest(source)
@@ -345,6 +346,18 @@ class ChatGPTArchive:
                     "unique_conversations":existing[1],"part_files":existing[2],
                     "duplicate_rows":existing[3],"indexed_conversations":existing[1],
                     "status":"already_imported"}
+        # The encrypted ZIP copy is only one of this import's durable writes:
+        # SQLite also needs space for every sealed conversation, indexes and
+        # transaction/journal overhead. A source-only free-space check could
+        # leave almost no room for the index and fail after a multi-GB copy.
+        # This is a conservative preflight heuristic, not a disk-space lease:
+        # concurrent writers may still consume the reserve mid-import.
+        index_reserve = 2 * conversation_bytes + 16 * 1024 * 1024
+        encrypted_overhead = len(_MAGIC) + 12 + 16
+        source_copy_reserve = (0 if self.source_path(export_sha).exists()
+                               else input_bytes + encrypted_overhead)
+        if shutil.disk_usage(self.root).free < source_copy_reserve + index_reserve:
+            raise ImportFailure("insufficient free disk for sealed source and conversation index")
         newly_encrypted = self._encrypted_zip_copy(source, export_sha)
         seen, rows, duplicates, message_nodes = {}, 0, 0, 0
         try:

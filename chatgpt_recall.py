@@ -93,7 +93,9 @@ def search_for_owner_review(
     superseded and otherwise unscreened records are never returned.  This
     method is not an authentication endpoint or a tool/LLM retrieval method.
     """
-    if not isinstance(context, OwnerContext) or not context.principal_verified:
+    # Authentication must be a literal host-verified Boolean, not a truthy
+    # client JSON string such as "false". Reject before source graph parsing.
+    if not isinstance(context, OwnerContext) or context.principal_verified is not True:
         raise RecallFailure("verified principal required")
     if not isinstance(query, str) or not 0 < len(query) <= MAX_QUERY_CHARS or not query.strip():
         raise RecallFailure("nonempty bounded query required")

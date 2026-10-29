@@ -73,6 +73,16 @@ class EphemeralRecallTests(unittest.TestCase):
             search_for_owner_review(conversation(), SHA, "hello", {"user": candidate()},
                                     context(principal_verified=False), now=NOW)
 
+    def test_truthy_nonboolean_owner_proof_denied_before_parsing_source(self):
+        for invalid in ("true", "false", 1, [True]):
+            with self.subTest(invalid=type(invalid).__name__), self.assertRaisesRegex(
+                RecallFailure, "verified principal required"
+            ):
+                # Deliberately invalid graph: auth must fail before inspecting it.
+                search_for_owner_review({"id": "not-a-graph"}, SHA, "hello",
+                                        {"user": candidate()},
+                                        context(principal_verified=invalid), now=NOW)
+
     def test_missing_consent_and_unscreened_record_denied(self):
         self.assertEqual(search_for_owner_review(conversation(), SHA, "hello",
             {"user": candidate()}, context(opted_in=False), now=NOW), ())

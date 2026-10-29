@@ -17,6 +17,7 @@ from chatgpt_graph import GraphFailure, derive_graph
 
 
 MAX_CATALOG_PARTS = 100_000
+MAX_CATALOG_NODES = 200_000
 MAX_ACCOUNT_CATALOG_RECORDS = 50_000
 _KNOWN_ROLES = frozenset({"user", "assistant", "system", "developer", "tool"})
 _KNOWN_CONTENT_TYPES = frozenset({
@@ -145,6 +146,67 @@ def catalog_conversation(conversation: dict, export_sha256: str) -> HistoricalCa
     )
 
 
+def _validate_aggregate_input(entry: HistoricalCatalog, export_sha256: str) -> None:
+    """Reject forged or internally inconsistent source-derived catalog records.
+
+    Catalog records are not cryptographic source proof, but an aggregate must
+    not silently accept caller-constructed negative counts, injected categories,
+    or a modified authority/admission label as if they were derived facts.
+    """
+    if not isinstance(entry, HistoricalCatalog) or entry.export_sha256 != export_sha256:
+        raise CatalogFailure("mixed or invalid source version")
+    if not isinstance(entry.conversation_id, str) or not 1 <= len(entry.conversation_id) <= 256:
+        raise CatalogFailure("invalid conversation identity")
+
+    counters = (
+        entry.total_nodes, entry.message_nodes, entry.root_nodes,
+        entry.active_path_nodes, entry.inactive_nodes, entry.branch_points,
+        entry.text_parts, entry.opaque_parts,
+    )
+    if any(type(value) is not int or value < 0 for value in counters):
+        raise CatalogFailure("invalid catalog counters")
+    if (not 1 <= entry.root_nodes <= entry.total_nodes <= MAX_CATALOG_NODES
+            or entry.message_nodes > entry.total_nodes
+            or entry.active_path_nodes > entry.total_nodes
+            or entry.inactive_nodes != entry.total_nodes - entry.active_path_nodes
+            or entry.branch_points > entry.total_nodes
+            or entry.text_parts + entry.opaque_parts > MAX_CATALOG_PARTS):
+        raise CatalogFailure("inconsistent catalog counters")
+
+    def check_buckets(items: tuple[tuple[str, int], ...], allowed: frozenset[str]) -> bool:
+        if not isinstance(items, tuple):
+            return False
+        accepted = allowed | {"other"}
+        if len(items) > len(accepted):
+            return False
+        if any(not isinstance(pair, tuple) or len(pair) != 2 for pair in items):
+            return False
+        if any(type(name) is not str or name not in accepted
+               or type(number) is not int or number <= 0 for name, number in items):
+            return False
+        return items == tuple(sorted(items)) and len({name for name, _ in items}) == len(items) \
+            and sum(number for _, number in items) == entry.message_nodes
+
+    if not check_buckets(entry.role_counts, _KNOWN_ROLES) or not check_buckets(
+        entry.content_type_counts, _KNOWN_CONTENT_TYPES
+    ):
+        raise CatalogFailure("invalid catalog buckets")
+
+    expected_tags = ["historical-source", "graph-validated", "not-admitted"]
+    if entry.branch_points > 0:
+        expected_tags.append("branching-history")
+    if entry.opaque_parts > 0:
+        expected_tags.append("opaque-multimodal-parts")
+    if entry.active_path_nodes == 0:
+        expected_tags.append("active-path-unknown")
+    if (entry.structural_tags != tuple(expected_tags)
+            or entry.evidence_class != "HISTORICAL_UNTRUSTED"
+            or entry.admission != "NOT_ADMITTED"
+            or entry.requested_effect != "NONE"
+            or entry.authority_granted is not False):
+        raise CatalogFailure("catalog authority or provenance mismatch")
+
+
 def summarize_catalogs(
     catalogs: Iterable[HistoricalCatalog], export_sha256: str,
 ) -> AccountCatalogSummary:
@@ -165,8 +227,7 @@ def summarize_catalogs(
         count += 1
         if count > MAX_ACCOUNT_CATALOG_RECORDS:
             raise CatalogFailure("account catalog budget exceeded")
-        if not isinstance(entry, HistoricalCatalog) or entry.export_sha256 != export_sha256:
-            raise CatalogFailure("mixed or invalid source version")
+        _validate_aggregate_input(entry, export_sha256)
         if entry.conversation_id in seen_ids:
             raise CatalogFailure("duplicate conversation identity")
         seen_ids.add(entry.conversation_id)
