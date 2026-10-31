@@ -117,6 +117,27 @@ class HostAnchoredJtiTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             self.reserve(self.again(), "older-token")
 
+    def test_deleting_spent_row_cannot_reissue_jti_with_intact_anchor(self):
+        self.assertTrue(self.reserve(self.first, "deleted-row-token"))
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM consumed").fetchone()[0], 1)
+            db.execute("DELETE FROM consumed")
+            db.commit()
+
+        # The independently held anchor was not rolled back or modified.
+        self.assertEqual(self.anchor.current(self.first.scope)[0], 1)
+        with self.assertRaises(PermissionError):
+            self.reserve(self.again(), "deleted-row-token")
+
+    def test_digest_key_rotation_with_same_scope_fails_closed(self):
+        self.assertTrue(self.reserve(self.first, "key-switch-token"))
+        changed = dict(self.params, digest_key=secrets.token_bytes(32))
+        another_reader = HostAnchoredJtiConsumer(self.path, **changed)
+
+        # Key changes cannot create a fresh identity for an already-spent JTI.
+        with self.assertRaises(PermissionError):
+            self.reserve(another_reader, "key-switch-token")
+
     def test_dual_rollback_is_known_unresolved_host_falsifier(self):
         copy_path = Path(self.temp.name) / "snapshot.sqlite"
         with closing(sqlite3.connect(self.path)) as src, closing(sqlite3.connect(copy_path)) as dst:
