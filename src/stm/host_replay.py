@@ -23,6 +23,7 @@ GENESIS = "0" * 64
 _IDENTITY = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 _JTI = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _ROOT = re.compile(r"^[0-9a-f]{64}$")
+_MAX_SCOPE_CONSUMPTIONS = 10_000
 
 
 class HostMonotonicAnchor(Protocol):
@@ -66,6 +67,9 @@ class HostAnchoredJtiConsumer:
         self.principal_id = principal_id
         self.scope = f"stm:{host_id}:{issuer}:{principal_id}"
         self._digest_key = digest_key
+        self._key_id = hmac.new(
+            digest_key, b"stm-replay-key-id-v1\0" + self.scope.encode("utf-8"),
+            hashlib.sha256).hexdigest()
         self._clock = clock or (lambda: int(time.time()))
         if not callable(self._clock):
             raise TypeError("host replay clock must be callable")
@@ -86,9 +90,10 @@ class HostAnchoredJtiConsumer:
             db.execute("PRAGMA synchronous=FULL")
             db.execute("BEGIN IMMEDIATE")
             db.execute("CREATE TABLE checkpoint (id INTEGER PRIMARY KEY CHECK(id=1), "
-                       "epoch INTEGER NOT NULL, root TEXT NOT NULL)")
+                       "epoch INTEGER NOT NULL, root TEXT NOT NULL, key_id TEXT NOT NULL)")
             db.execute("CREATE TABLE consumed (jti_mac TEXT PRIMARY KEY, epoch INTEGER NOT NULL)")
-            db.execute("INSERT INTO checkpoint (id,epoch,root) VALUES (1,0,?)", (GENESIS,))
+            db.execute("INSERT INTO checkpoint (id,epoch,root,key_id) VALUES (1,0,?,?)",
+                       (GENESIS, self._key_id))
             db.commit()
         finally:
             if db.in_transaction:
@@ -101,6 +106,25 @@ class HostAnchoredJtiConsumer:
             return True, getattr(self.anchor, operation)(*args)
         except Exception:
             return False, None
+
+    def _membership_root(self, db: sqlite3.Connection, epoch: int) -> str:
+        """Commit the entire spent-JTI set to the externally anchored root.
+
+        Recomputing it is deliberately bounded and conservative: deleting or
+        editing a spent row must invalidate the existing external checkpoint.
+        """
+        rows = db.execute("SELECT jti_mac,epoch FROM consumed ORDER BY jti_mac").fetchall()
+        if (len(rows) != epoch or len(rows) > _MAX_SCOPE_CONSUMPTIONS
+                or any(not isinstance(jti, str) or _ROOT.fullmatch(jti) is None
+                       or type(spent_epoch) is not int or not 1 <= spent_epoch <= epoch
+                       for jti, spent_epoch in rows)):
+            raise PermissionError("replay membership checkpoint is inconsistent")
+        if epoch == 0:
+            return GENESIS
+        payload = json.dumps({"version": 1, "key_id": self._key_id, "rows": rows},
+                             ensure_ascii=True, sort_keys=True,
+                             separators=(",", ":")).encode("ascii")
+        return hashlib.sha256(payload).hexdigest()
 
     def __call__(self, issuer: str, subject: str,
                  token_id: str, expires_at_unix: int) -> bool:
@@ -134,23 +158,24 @@ class HostAnchoredJtiConsumer:
         try:
             db.execute("PRAGMA synchronous=FULL")
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT epoch,root FROM checkpoint WHERE id=1").fetchone()
+            row = db.execute("SELECT epoch,root,key_id FROM checkpoint WHERE id=1").fetchone()
             available, remote_state = self._anchor_call("current", self.scope)
             if (row is None or type(row[0]) is not int or row[0] < 0
                     or not isinstance(row[1], str) or _ROOT.fullmatch(row[1]) is None
+                    or not isinstance(row[2], str)
+                    or not hmac.compare_digest(row[2], self._key_id)
+                    or self._membership_root(db, row[0]) != row[1]
                     or not available or remote_state != (row[0], row[1])):
                 raise PermissionError("external replay anchor mismatch")
             if db.execute("SELECT 1 FROM consumed WHERE jti_mac=?", (fingerprint,)).fetchone():
                 return False
-            transition = json.dumps({"scope": self.scope, "jti_mac": fingerprint,
-                                     "exp": expires_at_unix, "epoch": row[0] + 1},
-                                    sort_keys=True, separators=(",", ":")).encode("ascii")
-            next_root = hashlib.sha256(bytes.fromhex(row[1]) + transition).hexdigest()
+            db.execute("INSERT INTO consumed (jti_mac,epoch) VALUES (?,?)",
+                       (fingerprint, row[0] + 1))
+            next_root = self._membership_root(db, row[0] + 1)
             available, advanced = self._anchor_call(
                 "compare_advance", self.scope, row[0], row[1], next_root)
             if not available or advanced is not True:
                 raise PermissionError("external monotonic CAS rejected")
-            db.execute("INSERT INTO consumed (jti_mac,epoch) VALUES (?,?)", (fingerprint, row[0] + 1))
             db.execute("UPDATE checkpoint SET epoch=?,root=? WHERE id=1", (row[0] + 1, next_root))
             db.commit()
             return True
