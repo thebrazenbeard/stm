@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -118,7 +119,7 @@ class HostAnchoredJtiTests(unittest.TestCase):
 
     def test_dual_rollback_is_known_unresolved_host_falsifier(self):
         copy_path = Path(self.temp.name) / "snapshot.sqlite"
-        with sqlite3.connect(self.path) as src, sqlite3.connect(copy_path) as dst:
+        with closing(sqlite3.connect(self.path)) as src, closing(sqlite3.connect(copy_path)) as dst:
             src.backup(dst)
         old_anchor = self.anchor.snapshot()
         self.assertTrue(self.reserve(self.first, "dual-token"))
