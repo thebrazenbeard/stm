@@ -34,9 +34,13 @@ def _scope(record: Any, key: str) -> Any:
     direct = _get(record, key)
     nested = _get(record, "scope")
     scoped = _get(nested, key) if nested is not None else None
-    # Never let a direct label shadow contradictory nested identity. Both
-    # fields are untrusted record metadata; disagreement must fail closed
-    # before ranking, deduplication, or embedding can expose the record.
+    # Reject custom equality methods and type coercion in identity labels.
+    # Both labels are untrusted record metadata, never host authentication.
+    for value in (direct, scoped):
+        if value is not None and (type(value) is not str or not value):
+            raise ValueError("scope identity must be a nonempty exact string: " + key)
+    # Never let a direct label shadow contradictory nested identity before
+    # ranking, deduplication, or embedding can expose the record.
     if direct is not None and scoped is not None and direct != scoped:
         raise ValueError("conflicting direct and nested scope: " + key)
     return direct if direct is not None else scoped
@@ -163,6 +167,9 @@ class ContextRetriever:
                 if requested[field] is not None and requested[field] != value:
                     raise ValueError(f"Explicit {field} conflicts with scope")
                 requested[field] = value
+        for field, value in requested.items():
+            if value is not None and (type(value) is not str or not value):
+                raise ValueError("requested scope must be a nonempty exact string: " + field)
         pool: list[Any] = []
         for record in records:
             item_scope = {field: _scope(record, field) for field in requested}
