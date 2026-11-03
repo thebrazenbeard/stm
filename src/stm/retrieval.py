@@ -3,8 +3,10 @@
 No LLM, embedding service, durable historical store, or remote API is required.
 Scores indicate *retrieval relevance*, never truth, identity, consent, or authority.
 
-The caller must authorize a session before calling ``rank``. Scoped records without
-an explicit owner and session cause an error instead of a broad search.
+    The caller must authorize a session before calling ``rank``. Scoped records without
+    an explicit owner and session cause an error instead of a broad search.
+    Optional strict record-scope checking is structural only and does not itself
+    authenticate a session or grant historical-evidence privacy rights.
 """
 
 from __future__ import annotations
@@ -145,6 +147,7 @@ class ContextRetriever:
         tenant_id: str | None = None,
         agent_id: str | None = None,
         scope: Any | None = None,
+        require_scoped_records: bool = False,
         now: datetime | None = None,
         token_budget: int | None = None,
         token_counter: Callable[[str], int] | None = None,
@@ -170,9 +173,15 @@ class ContextRetriever:
         for field, value in requested.items():
             if value is not None and (type(value) is not str or not value):
                 raise ValueError("requested scope must be a nonempty exact string: " + field)
+        if type(require_scoped_records) is not bool:
+            raise TypeError("require_scoped_records must be a boolean")
+        if require_scoped_records and any(value is None for value in requested.values()):
+            raise ValueError("strict retrieval requires a full requested scope")
         pool: list[Any] = []
         for record in records:
             item_scope = {field: _scope(record, field) for field in requested}
+            if require_scoped_records and any(value is None for value in item_scope.values()):
+                raise ValueError("strict retrieval requires a full record scope")
             if any(value is not None and requested[field] is None for field, value in item_scope.items()):
                 raise ValueError("Full tenant/owner/agent/session identity is required for scoped retrieval")
             if any(value is not None and value != requested[field] for field, value in item_scope.items()):
