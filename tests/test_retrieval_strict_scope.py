@@ -48,6 +48,20 @@ class StrictScopeRetrievalTests(unittest.TestCase):
                 scope={"owner_id": "owner-one"}, require_scoped_records=True, now=NOW,
             )
 
+    def test_strict_validates_requested_scope_even_for_zero_output(self):
+        for kwargs in ({"limit": 0}, {"token_budget": 0}):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaisesRegex(ValueError, "strict.*requested.*scope"):
+                    self.retriever.rank(
+                        "synthetic", [], scope={}, require_scoped_records=True,
+                        now=NOW, **kwargs,
+                    )
+
+    def test_legacy_zero_output_preserves_early_return(self):
+        for kwargs in ({"limit": 0}, {"token_budget": 0}):
+            with self.subTest(kwargs=kwargs):
+                self.assertEqual(self.retriever.rank("synthetic", [], scope={}, now=NOW, **kwargs), [])
+
     def test_legacy_unscoped_ranking_is_unchanged_without_opt_in(self):
         result = self.retriever.rank(
             "private secret", [SyntheticHistoricalEvidenceRecord()],

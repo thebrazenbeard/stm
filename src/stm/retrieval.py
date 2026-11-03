@@ -156,7 +156,11 @@ class ContextRetriever:
             raise ValueError("limit must be nonnegative")
         if token_budget is not None and token_budget < 0:
             raise ValueError("token_budget must be nonnegative")
-        if limit == 0 or token_budget == 0:
+        if type(require_scoped_records) is not bool:
+            raise TypeError("require_scoped_records must be a boolean")
+        # Keep the historical zero-output fast path for legacy callers; strict
+        # opt-in callers must satisfy their requested-scope contract first.
+        if (limit == 0 or token_budget == 0) and not require_scoped_records:
             return []
         now = now or datetime.now(timezone.utc)
         if now.tzinfo is None:
@@ -173,10 +177,10 @@ class ContextRetriever:
         for field, value in requested.items():
             if value is not None and (type(value) is not str or not value):
                 raise ValueError("requested scope must be a nonempty exact string: " + field)
-        if type(require_scoped_records) is not bool:
-            raise TypeError("require_scoped_records must be a boolean")
         if require_scoped_records and any(value is None for value in requested.values()):
             raise ValueError("strict retrieval requires a full requested scope")
+        if limit == 0 or token_budget == 0:
+            return []
         pool: list[Any] = []
         for record in records:
             item_scope = {field: _scope(record, field) for field in requested}
