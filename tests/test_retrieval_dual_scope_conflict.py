@@ -43,6 +43,28 @@ class DualScopeRetrievalTests(unittest.TestCase):
                         scope=dict(AUTHORIZED), now=NOW,
                     )
 
+    def test_equality_spoofed_identity_does_not_bypass_scope_guard(self):
+        class SpoofedStr(str):
+            def __eq__(self, other):
+                return True
+
+            def __ne__(self, other):
+                return False
+
+        record = candidate()
+        record["owner_id"] = SpoofedStr("not-the-authorized-owner")
+        with self.assertRaisesRegex(ValueError, "scope identity must be"):
+            self.retriever.rank(
+                "synthetic", [record], scope=dict(AUTHORIZED), now=NOW,
+            )
+
+        requested = dict(AUTHORIZED)
+        requested["owner_id"] = SpoofedStr("not-the-authorized-owner")
+        with self.assertRaisesRegex(ValueError, "requested scope must be"):
+            self.retriever.rank(
+                "synthetic", [candidate()], scope=requested, now=NOW,
+            )
+
     def test_matching_direct_and_nested_identity_remains_usable(self):
         result = self.retriever.rank(
             "synthetic", [candidate()], scope=dict(AUTHORIZED), now=NOW,
