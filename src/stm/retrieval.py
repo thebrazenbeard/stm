@@ -32,10 +32,14 @@ def _get(record: Any, key: str, default: Any = None) -> Any:
 
 def _scope(record: Any, key: str) -> Any:
     direct = _get(record, key)
-    if direct is not None:
-        return direct
     nested = _get(record, "scope")
-    return _get(nested, key) if nested is not None else None
+    scoped = _get(nested, key) if nested is not None else None
+    # Never let a direct label shadow contradictory nested identity. Both
+    # fields are untrusted record metadata; disagreement must fail closed
+    # before ranking, deduplication, or embedding can expose the record.
+    if direct is not None and scoped is not None and direct != scoped:
+        raise ValueError("conflicting direct and nested scope: " + key)
+    return direct if direct is not None else scoped
 
 
 def _words(text: str) -> tuple[str, ...]:
