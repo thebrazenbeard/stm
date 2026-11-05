@@ -60,6 +60,32 @@ class ArchiveTests(unittest.TestCase):
         self.assertNotIn(b"private conversation text", (self.private / "index.sqlite3").read_bytes())
         self.assertNotIn(b"not a json message", self.arc.source_path(report["export_sha256"]).read_bytes())
 
+    def test_scope_audit_uses_authenticated_records_without_exposing_titles(self):
+        p = self.root / "scopes.zip"
+        ordinary = conv("global", "do not leak this title")
+        ordinary["memory_scope"] = "global_enabled"
+        project_v2 = conv("scope-v2", "private project conversation")
+        project_v2["memory_scope"] = "project_v2"
+        project_v2["metadata"].pop("project_id")
+        project_old = conv("scope-old", "another private title")
+        project_old["memory_scope"] = "project_enabled"
+        project_old["metadata"]["project_id"] = "test-project-id"
+        makezip(p, {"conversations.json": [ordinary, project_v2, project_old]})
+        self.arc.import_zip(p)
+        summary = self.arc.project_scope_audit()
+        self.assertEqual(summary["authenticated_records"], 3)
+        self.assertEqual(summary["project_scoped"], 2)
+        self.assertEqual(summary["project_scoped_with_explicit_id"], 1)
+        self.assertEqual(summary["project_scoped_without_explicit_id"], 1)
+        self.assertEqual(summary["memory_scopes"], {
+            "global_enabled": 1, "project_enabled": 1, "project_v2": 1})
+        self.assertFalse(summary["destructive_project_cleanup_qualified"])
+        self.assertNotIn("private project", json.dumps(summary))
+
+    def test_scope_audit_rejects_unverified_imports(self):
+        with self.assertRaises(ImportFailure):
+            self.arc.project_scope_audit()
+
     def test_reimport_is_idempotent_and_same_ids_can_have_revisions(self):
         p1 = self.root / "one.zip"
         p2 = self.root / "two.zip"
