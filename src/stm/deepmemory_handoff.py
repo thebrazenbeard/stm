@@ -271,6 +271,16 @@ class DeepMemoryHandoff:
         except Exception as error:
             raise HandoffUnverified("sink acceptance is unknown; source preserved",
                                     idempotency_key=key) from error
+        # A verifier is separately trusted, but reject visibly mismatched
+        # receipt envelopes before even asking it to authenticate acceptance.
+        # These public fields prove no custody by themselves; only an
+        # independently verified readback can establish that.
+        if (not isinstance(raw_receipt, dict)
+                or raw_receipt.get("destination_id") != target.destination_id
+                or raw_receipt.get("source_version_digest") != record.source_version_digest
+                or raw_receipt.get("idempotency_key") != key):
+            raise HandoffUnverified("external receipt does not bind exact handoff",
+                                    idempotency_key=key)
         try:
             accepted = self._verify_receipt(raw_receipt, record, key)
         except Exception as error:
