@@ -495,6 +495,50 @@ class ChatGPTArchive:
         return {"export_sha256":export_sha,"verified":verified,
                 "source_rows":record[0],"part_files":record[3],"archive_verified":True}
 
+    def project_scope_audit(self):
+        """Authenticated, aggregate-only audit; never infers native Project identity."""
+        scopes = {}
+        project_scoped = 0
+        explicit_project_ids = 0
+        seen = 0
+        with closing(self._db()) as db:
+            imports = db.execute(
+                "SELECT export_sha,unique_conversations,verified FROM imports"
+            ).fetchall()
+            if not imports or any(verified != 1 for _, _, verified in imports):
+                raise ImportFailure("scope audit requires fully verified imports")
+            expected = sum(count for _, count, _ in imports)
+            rows = db.execute(
+                "SELECT export_sha,conversation_token,sealed,digest "
+                "FROM conversations ORDER BY export_sha,conversation_token"
+            )
+            for row in rows:
+                item = self._open_record(*row)
+                seen += 1
+                raw_scope = item.get("memory_scope")
+                scope = raw_scope if isinstance(raw_scope, str) and raw_scope else "(absent)"
+                scopes[scope] = scopes.get(scope, 0) + 1
+                if scope.startswith("project"):
+                    project_scoped += 1
+                    nested = item.get("metadata")
+                    project_id = item.get("project_id")
+                    if not isinstance(project_id, str) and isinstance(nested, dict):
+                        project_id = nested.get("project_id")
+                    if isinstance(project_id, str) and project_id.strip():
+                        explicit_project_ids += 1
+        if seen != expected:
+            raise ImportFailure("scope audit record count mismatch")
+        return {
+            "authenticated_records": seen,
+            "verified_exports": len(imports),
+            "memory_scopes": dict(sorted(scopes.items())),
+            "project_scoped": project_scoped,
+            "project_scoped_with_explicit_id": explicit_project_ids,
+            "project_scoped_without_explicit_id": project_scoped - explicit_project_ids,
+            "native_project_inventory_qualified": False,
+            "destructive_project_cleanup_qualified": False,
+        }
+
     def status(self):
         with closing(self._db()) as db:
             exports=db.execute("SELECT count(*) FROM imports WHERE verified=1").fetchone()[0]
@@ -507,7 +551,7 @@ class ChatGPTArchive:
 
 def main():
     parser=argparse.ArgumentParser(description="Private lossless ChatGPT export importer")
-    parser.add_argument("operation",choices=["import","verify","status"])
+    parser.add_argument("operation",choices=["import","verify","status","project-scope-audit"])
     parser.add_argument("--vault-dir",type=Path,required=True)
     parser.add_argument("--key-file",type=Path,required=True)
     parser.add_argument("--zip",dest="zipfile",type=Path)
@@ -520,6 +564,8 @@ def main():
     elif args.operation=="verify":
         if not args.export_sha256: parser.error("--export-sha256 required")
         result=archive.verify(args.export_sha256)
+    elif args.operation=="project-scope-audit":
+        result=archive.project_scope_audit()
     else:
         result=archive.status()
     print(json.dumps(result,sort_keys=True))
