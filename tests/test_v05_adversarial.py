@@ -31,7 +31,12 @@ class PrivateSink:
         self.calls.append((record, idempotency_key))
         self.accepted.setdefault(idempotency_key, record)
         self.after_send()
-        return {"external_record_id": "private-record-1", "idempotency_key": idempotency_key}
+        return {
+            "external_record_id": "private-record-1",
+            "destination_id": target.destination_id,
+            "source_version_digest": record.source_version_digest,
+            "idempotency_key": idempotency_key,
+        }
 
 
 class HandoffAdversarialTests(unittest.TestCase):
