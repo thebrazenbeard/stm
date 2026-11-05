@@ -69,6 +69,23 @@ py -3 chatgpt_archive.py verify --vault-dir $vault --key-file "$vault\key.bin" -
 Do not substitute an old ChatGPT export for the current state. OpenAI's
 download links expire and an account-wide export may take several days.
 
+## Native Project reconciliation audit
+
+Run `project-scope-audit` with the same vault and key-file arguments as
+`status`. It authenticates each indexed conversation, emits aggregate
+memory-scope counts only, and never writes chat titles, IDs, or bodies to a
+report. It refuses incomplete or unverified imports.
+
+The ChatGPT account export can distinguish historical `project_enabled` and
+`project_v2` conversations. This does **not** imply that it supplies an
+unambiguous Project ID or native Project inventory. `project_scoped_without_explicit_id`
+counts records for which neither top-level `project_id` nor
+`metadata.project_id` was provided. A Project name inferred from conversation
+content is not a verified mapping, and even a sourced Project ID is not proof
+of current Project existence. Do not delete, merge, or relocate native Projects
+using this archive alone: reconcile against the authenticated live Project
+inventory first.
+
 ## Operational and security limits
 
 - A successful **synthetic test** qualifies the importer code, NOT historical

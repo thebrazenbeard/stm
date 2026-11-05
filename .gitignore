@@ -16,3 +16,5 @@ dist/
 *.db
 *.key
 key.bin
+config.bat
+node_modules
