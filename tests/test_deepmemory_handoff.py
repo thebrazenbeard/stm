@@ -12,7 +12,7 @@ from stm.handoff_policy import HandoffPolicy
 
 
 UTC = timezone.utc
-NOW = datetime(2026, 10, 28, 12, 0, tzinfo=UTC)
+NOW = datetime.now(UTC)
 SCOPE = ArchiveScope("tenant-1", "owner-1", "vera-1")
 
 
@@ -29,7 +29,12 @@ class MockPrivateSink:
         if idempotency_key not in self.records:
             self.records[idempotency_key] = record
         self.after_submit()
-        return {"external_record_id": "private-ledger:001", "key": idempotency_key}
+        return {
+            "external_record_id": "private-ledger:001",
+            "destination_id": target.destination_id,
+            "source_version_digest": record.source_version_digest,
+            "idempotency_key": idempotency_key,
+        }
 
 
 class HandoffTests(unittest.TestCase):
@@ -37,9 +42,10 @@ class HandoffTests(unittest.TestCase):
         self.turn = ArchiveTurn(
             turn_id="turn-1", conversation_id="chat-1", role="user",
             content="The green lantern was returned.", source="host:chat-1:turn-1",
-            privacy="private", event_time="2026-09-01T10:00:00+00:00",
-            recorded_at="2026-09-01T10:01:00+00:00",
-            supersedes_id=None, expires_at="2026-11-01T00:00:00+00:00",
+            privacy="private",
+            event_time=(NOW - timedelta(days=35, hours=1)).isoformat(),
+            recorded_at=(NOW - timedelta(days=35)).isoformat(),
+            supersedes_id=None, expires_at=(NOW + timedelta(days=10)).isoformat(),
         )
         self.target = TargetGovernance(
             destination_id="owner-private-history", retention_until=NOW + timedelta(days=365),
@@ -79,7 +85,7 @@ class HandoffTests(unittest.TestCase):
             return self.target_verified and target == self.target and scope == SCOPE and privacy == "private"
 
         def receipt_verify(receipt, record, key):
-            return (self.receipt_verified and receipt.get("key") == key
+            return (self.receipt_verified and receipt.get("idempotency_key") == key
                     and record.source_id == "host:chat-1:turn-1"
                     and self.sink.records.get(key) == record)
 
@@ -142,7 +148,7 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(self.sink.submit_calls, 0)
 
     def test_not_thirty_days_old_cannot_export(self):
-        self.turn = replace(self.turn, recorded_at="2026-10-20T00:00:00+00:00")
+        self.turn = replace(self.turn, recorded_at=(NOW - timedelta(days=5)).isoformat())
         with self.assertRaises(PermissionError):
             self.submit()
         self.assertEqual(self.sink.submit_calls, 0)
@@ -154,7 +160,7 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(self.sink.submit_calls, 0)
 
     def test_missing_or_expired_source_retention_cannot_export(self):
-        for expiry in (None, "2026-10-01T00:00:00+00:00"):
+        for expiry in (None, (NOW - timedelta(days=1)).isoformat()):
             with self.subTest(expiry=expiry):
                 self.turn = replace(self.turn, expires_at=expiry)
                 with self.assertRaises(PermissionError):
@@ -162,8 +168,8 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(self.sink.submit_calls, 0)
 
     def test_exact_thirty_days_cannot_export_when_source_expires_then(self):
-        self.turn = replace(self.turn, recorded_at="2026-09-28T12:00:00+00:00",
-                            expires_at="2026-10-28T12:00:00+00:00")
+        self.turn = replace(self.turn, recorded_at=(NOW - timedelta(days=30)).isoformat(),
+                            expires_at=NOW.isoformat())
         with self.assertRaises(PermissionError):
             self.submit()
         self.assertEqual(self.sink.submit_calls, 0)
@@ -248,6 +254,25 @@ class HandoffTests(unittest.TestCase):
             self.submit()
         self.assertEqual(self.sink.submit_calls, 0)
 
+    def test_receipt_envelope_must_bind_exact_target_source_and_key(self):
+        # An otherwise permissive verifier cannot convert mismatched
+        # caller-supplied metadata into a purported durable receipt.
+        normal_submit = self.sink.submit
+        for name in ("destination_id", "source_version_digest", "idempotency_key"):
+            with self.subTest(name=name):
+                seen = []
+                def forged(record, *, target, idempotency_key):
+                    receipt = normal_submit(
+                        record, target=target, idempotency_key=idempotency_key,
+                    )
+                    return {**receipt, name: "forged-value"}
+                self.sink.submit = forged
+                self.handoff._verify_receipt = lambda *args: seen.append(args) or True
+                with self.assertRaises(HandoffUnverified):
+                    self.submit()
+                self.assertEqual(seen, [])
+                self.sink.submit = normal_submit
+
     def test_untrusted_result_without_explicit_receipt_id_is_unknown(self):
         self.sink.submit = lambda record, *, target, idempotency_key: {"key": idempotency_key}
         self.handoff._verify_receipt = lambda receipt, record, key: True
@@ -260,7 +285,10 @@ class HandoffTests(unittest.TestCase):
                            "ghp_SecretMaterial", "x" * 200, "patrick@example.com"):
             with self.subTest(identifier=identifier):
                 self.sink.submit = lambda record, *, target, idempotency_key: {
-                    "key": idempotency_key, "external_record_id": identifier,
+                    "destination_id": target.destination_id,
+                    "source_version_digest": record.source_version_digest,
+                    "idempotency_key": idempotency_key,
+                    "external_record_id": identifier,
                 }
                 with self.assertRaises(HandoffUnverified):
                     self.submit()
