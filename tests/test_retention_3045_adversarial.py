@@ -40,7 +40,12 @@ class FakePrivateSink:
         self.requests.append((record, target, idempotency_key))
         if self.raise_on_submit:
             raise OSError("synthetic transport interrupted")
-        return {"external_record_id": "synthetic:receipt-01", "key": idempotency_key}
+        return {
+            "external_record_id": "synthetic:receipt-01",
+            "destination_id": target.destination_id,
+            "source_version_digest": record.source_version_digest,
+            "idempotency_key": idempotency_key,
+        }
 
 
 class ThirtyFortyFiveAdversarialTests(unittest.TestCase):
@@ -107,7 +112,7 @@ class ThirtyFortyFiveAdversarialTests(unittest.TestCase):
             sink=self.sink,
             verify_receipt=lambda receipt, record, key: (
                 self.receipt_verified and isinstance(receipt, dict)
-                and receipt.get("key") == key
+                and receipt.get("idempotency_key") == key
             ),
             clock=lambda: self.now,
         )
