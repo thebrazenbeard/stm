@@ -3,8 +3,10 @@
 No LLM, embedding service, durable historical store, or remote API is required.
 Scores indicate *retrieval relevance*, never truth, identity, consent, or authority.
 
-The caller must authorize a session before calling ``rank``. Scoped records without
-an explicit owner and session cause an error instead of a broad search.
+    The caller must authorize a session before calling ``rank``. Scoped records without
+    an explicit owner and session cause an error instead of a broad search.
+    Optional strict record-scope checking is structural only and does not itself
+    authenticate a session or grant historical-evidence privacy rights.
 """
 
 from __future__ import annotations
@@ -32,10 +34,18 @@ def _get(record: Any, key: str, default: Any = None) -> Any:
 
 def _scope(record: Any, key: str) -> Any:
     direct = _get(record, key)
-    if direct is not None:
-        return direct
     nested = _get(record, "scope")
-    return _get(nested, key) if nested is not None else None
+    scoped = _get(nested, key) if nested is not None else None
+    # Reject custom equality methods and type coercion in identity labels.
+    # Both labels are untrusted record metadata, never host authentication.
+    for value in (direct, scoped):
+        if value is not None and (type(value) is not str or not value):
+            raise ValueError("scope identity must be a nonempty exact string: " + key)
+    # Never let a direct label shadow contradictory nested identity before
+    # ranking, deduplication, or embedding can expose the record.
+    if direct is not None and scoped is not None and direct != scoped:
+        raise ValueError("conflicting direct and nested scope: " + key)
+    return direct if direct is not None else scoped
 
 
 def _words(text: str) -> tuple[str, ...]:
@@ -137,6 +147,7 @@ class ContextRetriever:
         tenant_id: str | None = None,
         agent_id: str | None = None,
         scope: Any | None = None,
+        require_scoped_records: bool = False,
         now: datetime | None = None,
         token_budget: int | None = None,
         token_counter: Callable[[str], int] | None = None,
@@ -145,7 +156,11 @@ class ContextRetriever:
             raise ValueError("limit must be nonnegative")
         if token_budget is not None and token_budget < 0:
             raise ValueError("token_budget must be nonnegative")
-        if limit == 0 or token_budget == 0:
+        if type(require_scoped_records) is not bool:
+            raise TypeError("require_scoped_records must be a boolean")
+        # Keep the historical zero-output fast path for legacy callers; strict
+        # opt-in callers must satisfy their requested-scope contract first.
+        if (limit == 0 or token_budget == 0) and not require_scoped_records:
             return []
         now = now or datetime.now(timezone.utc)
         if now.tzinfo is None:
@@ -159,9 +174,18 @@ class ContextRetriever:
                 if requested[field] is not None and requested[field] != value:
                     raise ValueError(f"Explicit {field} conflicts with scope")
                 requested[field] = value
+        for field, value in requested.items():
+            if value is not None and (type(value) is not str or not value):
+                raise ValueError("requested scope must be a nonempty exact string: " + field)
+        if require_scoped_records and any(value is None for value in requested.values()):
+            raise ValueError("strict retrieval requires a full requested scope")
+        if limit == 0 or token_budget == 0:
+            return []
         pool: list[Any] = []
         for record in records:
             item_scope = {field: _scope(record, field) for field in requested}
+            if require_scoped_records and any(value is None for value in item_scope.values()):
+                raise ValueError("strict retrieval requires a full record scope")
             if any(value is not None and requested[field] is None for field, value in item_scope.items()):
                 raise ValueError("Full tenant/owner/agent/session identity is required for scoped retrieval")
             if any(value is not None and value != requested[field] for field, value in item_scope.items()):
