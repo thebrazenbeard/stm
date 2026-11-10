@@ -8,3 +8,5 @@ htmlcov/
 build/
 dist/
 *.json.tmp
+config.bat
+node_modules
