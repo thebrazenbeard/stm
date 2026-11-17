@@ -1,0 +1,2 @@
+cryptography==48.0.1
+ijson==3.4.0

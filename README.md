@@ -141,6 +141,37 @@ with TemporaryDirectory() as temp:
 
 Checkpoints are plaintext, contain potentially sensitive data, and are not authenticated. Use private, trusted filesystem paths; SHA-256 detects accidental damage, not deliberate modification. Deleting live memory does not erase older checkpoint copies.
 
+## Entire-account ChatGPT export (separate private source candidate)
+
+The opt-in [`chatgpt_archive.py`](chatgpt_archive.py) command preserves an
+official **account-wide** ChatGPT export in an owner-private, AES-GCM-sealed
+ZIP and conversation index. It is distinct from the STM session journal and
+its day-30/day-45 lifecycle. It retains all source conversation branches and
+historical speaker attribution without promoting the imported text into
+current facts, consent, identity, permissions, or model weights.
+
+The source branch also includes synthetic-tested ZIP safety checks,
+[`chatgpt_graph.py`](chatgpt_graph.py) provenance projection,
+[`chatgpt_memory_policy.py`](chatgpt_memory_policy.py) deny-by-default review
+admission, [`chatgpt_recall.py`](chatgpt_recall.py) bounded **local owner-review**
+search, and an opt-in [`chatgpt_source_recount.py`](chatgpt_source_recount.py)
+independent source/index reconciliation. These root-level tools currently run
+from a source checkout; ordinary `pip install -e .` does not install them as
+part of the `stm` package.
+
+The [live coordination event](https://github.com/thebrazenbeard/chat-communication-bus/issues/403)
+records a real Lappy preservation/readback milestone. That does **not** prove
+live authenticated VeraOS or Android retrieval, encrypted persistent semantic
+search, or neural-weight training. No private export belongs in public GitHub.
+The account-source archive is not automatically eligible for DeepMemoryStorage
+handoff. The [integration contract](docs/MEMORYLEDGER_STM_DMS_INTEGRATION.md)
+separates it from the still-draft MemoryLedger planner and any future private
+DeepMemoryStorage destination.
+
+See [account import operations](CHATGPT_ACCOUNTWIDE_IMPORT.md),
+[graph and admission architecture](docs/CHATGPT_MEMORY_DERIVATION_CONTRACT.md),
+and [qualification gates](docs/CHATGPT_INGESTION_QUALIFICATION.md).
+
 ## Boundaries
 
 The calling host must authenticate identities before supplying owner, agent, session, or tenant IDs; mere matching strings are not proof of identity. `privacy="shared"` does not authorize global retrieval. Historical evidence from DeepMemoryStorage remains an external, read-only candidate and must not be silently promoted into current working memory. STM does not make psychological judgments or overwrite self/empathy governance.
