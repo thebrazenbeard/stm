@@ -145,6 +145,8 @@ Checkpoints are plaintext, contain potentially sensitive data, and are not authe
 
 The calling host must authenticate identities before supplying owner, agent, session, or tenant IDs; mere matching strings are not proof of identity. `privacy="shared"` does not authorize global retrieval. Historical evidence from DeepMemoryStorage remains an external, read-only candidate and must not be silently promoted into current working memory. STM does not make psychological judgments or overwrite self/empathy governance.
 
+Direct `ContextRetriever.rank()` integrations can opt into `require_scoped_records=True`: this requires all four requested tenant/owner/agent/session identifiers and all four matching identifiers on every candidate record, rejecting unscoped historical evidence before ranking. The default remains backward-compatible for existing unscoped callers. **This is a structural filter, not authentication or a privacy grant**; a trusted host must authorize the principal and the historical source's privacy labels before passing any records. In particular, caller-supplied `authorization_effect` and `privacy_scope` fields do not grant access.
+
 Reference implementations were researched for mechanisms and tradeoffs. STM's code is original; no source or private historical data from those repositories was copied. The repository owner has not yet selected a redistribution license for STM itself.
 
 ## Development

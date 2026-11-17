@@ -12,7 +12,13 @@ from stm.handoff_policy import HandoffPolicy
 
 
 UTC = timezone.utc
-NOW = datetime(2026, 10, 28, 12, 0, tzinfo=UTC)
+# This fixture models a live, 40-day-old source with a finite, still-active
+# retention window. A fixed 2026 deadline made otherwise valid handoff tests
+# fail as soon as wall-clock time passed that date; production checks correctly
+# use the real clock and must remain fail-closed.
+NOW = datetime.now(UTC)
+SOURCE_RECORDED = NOW - timedelta(days=40)
+SOURCE_EXPIRES = NOW + timedelta(days=30)
 SCOPE = ArchiveScope("tenant-1", "owner-1", "vera-1")
 
 
@@ -37,9 +43,9 @@ class HandoffTests(unittest.TestCase):
         self.turn = ArchiveTurn(
             turn_id="turn-1", conversation_id="chat-1", role="user",
             content="The green lantern was returned.", source="host:chat-1:turn-1",
-            privacy="private", event_time="2026-09-01T10:00:00+00:00",
-            recorded_at="2026-09-01T10:01:00+00:00",
-            supersedes_id=None, expires_at="2026-11-01T00:00:00+00:00",
+            privacy="private", event_time=(SOURCE_RECORDED - timedelta(minutes=1)).isoformat(),
+            recorded_at=SOURCE_RECORDED.isoformat(),
+            supersedes_id=None, expires_at=SOURCE_EXPIRES.isoformat(),
         )
         self.target = TargetGovernance(
             destination_id="owner-private-history", retention_until=NOW + timedelta(days=365),
@@ -142,7 +148,7 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(self.sink.submit_calls, 0)
 
     def test_not_thirty_days_old_cannot_export(self):
-        self.turn = replace(self.turn, recorded_at="2026-10-20T00:00:00+00:00")
+        self.turn = replace(self.turn, recorded_at=(NOW - timedelta(days=20)).isoformat())
         with self.assertRaises(PermissionError):
             self.submit()
         self.assertEqual(self.sink.submit_calls, 0)
@@ -154,7 +160,7 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(self.sink.submit_calls, 0)
 
     def test_missing_or_expired_source_retention_cannot_export(self):
-        for expiry in (None, "2026-10-01T00:00:00+00:00"):
+        for expiry in (None, (NOW - timedelta(days=1)).isoformat()):
             with self.subTest(expiry=expiry):
                 self.turn = replace(self.turn, expires_at=expiry)
                 with self.assertRaises(PermissionError):
@@ -162,8 +168,8 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(self.sink.submit_calls, 0)
 
     def test_exact_thirty_days_cannot_export_when_source_expires_then(self):
-        self.turn = replace(self.turn, recorded_at="2026-09-28T12:00:00+00:00",
-                            expires_at="2026-10-28T12:00:00+00:00")
+        self.turn = replace(self.turn, recorded_at=(NOW - timedelta(days=30)).isoformat(),
+                            expires_at=NOW.isoformat())
         with self.assertRaises(PermissionError):
             self.submit()
         self.assertEqual(self.sink.submit_calls, 0)
