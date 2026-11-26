@@ -124,6 +124,7 @@ class ContextRetriever:
         semantic_weight: float = 0.25,
         recency_half_life_hours: float = 72.0,
         embedding_errors: str = "raise",
+        preserve_attribution: bool = False,
     ) -> None:
         if not 0 <= semantic_weight <= 1:
             raise ValueError("semantic_weight must be within [0, 1]")
@@ -135,6 +136,9 @@ class ContextRetriever:
         self.semantic_weight = semantic_weight
         self.recency_half_life_hours = recency_half_life_hours
         self.embedding_errors = embedding_errors
+        if type(preserve_attribution) is not bool:
+            raise TypeError("preserve_attribution must be bool")
+        self.preserve_attribution = preserve_attribution
 
     def rank(
         self,
@@ -199,9 +203,17 @@ class ContextRetriever:
 
         # Collapse identical content only within one already-authorized scope.
         # Keep all matching objects for traceability; prefer latest representative.
-        grouped: dict[str, list[Any]] = {}
+        grouped: dict[object, list[Any]] = {}
         for record in pool:
-            grouped.setdefault(_key(str(_get(record, "content", ""))), []).append(record)
+            content = str(_get(record, "content", ""))
+            if self.preserve_attribution:
+                # Public consumers discard grouped provenance. Keep distinct
+                # source/role and exact text eligible as separate results.
+                key = (content, *(_get(record, field) for field in
+                       ("role", "source", "kind", "origin", "privacy")))
+            else:
+                key = _key(content)
+            grouped.setdefault(key, []).append(record)
         candidates: list[tuple[Any, tuple[Any, ...]]] = []
         for copies in grouped.values():
             copies.sort(key=lambda r: (-_timestamp(_get(r, "updated_at", _get(r, "created_at")), 0), str(_get(r, "id", ""))))

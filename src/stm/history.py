@@ -35,12 +35,15 @@ class HistoricalEvidence:
     ledger_path: str
     retrieved_at: datetime
     result_semantics: str = HISTORICAL_ONLY
+    speaker_role: str | None = None  # Legacy/provider results may omit it.
 
     def __post_init__(self) -> None:
         if not all((self.memory_id, self.source_ids, self.privacy_scope,
                     self.provenance_ceiling, self.currentness_rule,
                     self.ledger_path)):
             raise ValueError("historical evidence must preserve provenance and boundaries")
+        if self.speaker_role is not None and (not isinstance(self.speaker_role, str) or not self.speaker_role.strip()):
+            raise ValueError("speaker role must be nonempty text when supplied")
         if self.result_semantics != HISTORICAL_ONLY:
             raise ValueError("historical evidence may not claim current authority")
         if self.retrieved_at.tzinfo is None:

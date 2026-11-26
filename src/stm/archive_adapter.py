@@ -99,6 +99,7 @@ class ArchiveHistoryReader:
                 ledger_path=locator,
                 retrieved_at=retrieved_at,
                 result_semantics=HISTORICAL_ONLY,
+                speaker_role=turn.role,
             ))
         return tuple(rows)
 
