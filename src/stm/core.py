@@ -77,7 +77,8 @@ class STM:
         if retriever is None:
             from .retrieval import ContextRetriever as RetrieverBackend
 
-            retriever = RetrieverBackend()
+            # Session consumers expose representatives, not RankedRecord groups.
+            retriever = RetrieverBackend(preserve_attribution=True)
         if packer is None:
             from .context import ContextPacker as PackerBackend
 
